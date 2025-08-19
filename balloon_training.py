@@ -16,7 +16,7 @@ def train_balloon_detector():
     print("🎈 开始训练Balloon检测器")
     print("=" * 60)
     
-    # 配置文件路径
+    # 配置文件路径 这里的yaml文件可以不指定详细位置 -> 只要它在整个项目内或者和项目在同级目录；并且没有同名文件即可！
     config_file = Path("~/ultralytics/my_balloon.yaml").expanduser()
     
     # 检查配置文件是否存在
@@ -47,7 +47,7 @@ def train_balloon_detector():
         epochs=200,               # 训练轮数 (小数据集，适中即可)
         batch=16,                 # 批大小 (根据GPU内存调整)
         imgsz=640,                # 输入图像尺寸
-        device=5,                 # GPU设备 (根据您的GPU编号调整)
+        device="mps",                 # GPU设备 (根据您的GPU编号调整)
         
         # === 项目管理 ===
         project='runs/detect',    # 项目目录
