@@ -1,0 +1,29 @@
+# Balloon数据集配置文件 (单尺度切片版本)
+# 用于YOLO11训练的气球检测数据集 - 切片后
+
+# 数据集根目录 (切片后的YOLO格式数据)
+path: /home/cjh/mmdetection/data/balloon/yolo_format_slice
+
+# 训练/验证/测试集配置
+train: images/train  # 训练图像目录
+val: images/val      # 验证图像目录
+test: images/val     # 测试图像目录 (使用验证集)
+
+# 类别数量和名称
+nc: 1                # 类别数量: 1个类别
+names:               # 类别名称
+  0: balloon         # 类别0: 气球
+
+# 数据集信息
+info:
+  description: "Balloon Detection Dataset (Sliced)"
+  version: "1.0"
+  year: 2024
+  contributor: "Ultralytics User"
+  url: ""
+  date_created: "2025-10-20"
+  slice_params:
+    crop_size: 1024
+    gap: 200
+    rates: [1.0]
+

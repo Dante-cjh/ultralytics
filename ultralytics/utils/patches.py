@@ -30,16 +30,44 @@ def imread(filename: str, flags: int = cv2.IMREAD_COLOR) -> Optional[np.ndarray]
         >>> img = imread("path/to/image.jpg")
         >>> img = imread("path/to/image.jpg", cv2.IMREAD_GRAYSCALE)
     """
-    file_bytes = np.fromfile(filename, np.uint8)
-    if filename.endswith((".tiff", ".tif")):
-        success, frames = cv2.imdecodemulti(file_bytes, cv2.IMREAD_UNCHANGED)
-        if success:
-            # Handle RGB images in tif/tiff format
-            return frames[0] if len(frames) == 1 and frames[0].ndim == 3 else np.stack(frames, axis=2)
+    # 直接使用cv2.imread避免所有numpy兼容性问题
+    try:
+        im = cv2.imread(filename, flags)
+        if im is not None:
+            # 确保数组完全兼容OpenCV后续操作
+            im = np.ascontiguousarray(im, dtype=np.uint8)
+            return im[..., None] if im.ndim == 2 else im  # Always ensure 3 dimensions
+    except Exception:
+        pass
+    
+    # 只有在cv2.imread失败时才回退到复杂方法（针对特殊文件名）
+    try:
+        # 修复numpy兼容性问题：使用frombuffer代替fromfile
+        try:
+            with open(filename, 'rb') as f:
+                file_bytes = np.frombuffer(f.read(), np.uint8)
+        except Exception:
+            file_bytes = np.fromfile(filename, np.uint8)
+            
+        if filename.endswith((".tiff", ".tif")):
+            # 确保数组是连续的，并且是正确的dtype
+            if not file_bytes.flags.c_contiguous:
+                file_bytes = np.ascontiguousarray(file_bytes)
+            file_bytes = file_bytes.astype(np.uint8)
+            success, frames = cv2.imdecodemulti(file_bytes, cv2.IMREAD_UNCHANGED)
+            if success:
+                # Handle RGB images in tif/tiff format
+                return frames[0] if len(frames) == 1 and frames[0].ndim == 3 else np.stack(frames, axis=2)
+            return None
+        else:
+            # 确保数组是连续的，并且是正确的dtype
+            if not file_bytes.flags.c_contiguous:
+                file_bytes = np.ascontiguousarray(file_bytes)
+            file_bytes = file_bytes.astype(np.uint8)
+            im = cv2.imdecode(file_bytes, flags)
+            return im[..., None] if im is not None and im.ndim == 2 else im  # Always ensure 3 dimensions
+    except Exception:
         return None
-    else:
-        im = cv2.imdecode(file_bytes, flags)
-        return im[..., None] if im is not None and im.ndim == 2 else im  # Always ensure 3 dimensions
 
 
 def imwrite(filename: str, img: np.ndarray, params: Optional[List[int]] = None) -> bool:

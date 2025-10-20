@@ -54,7 +54,6 @@ coverage.xml
 .hypothesis/
 .pytest_cache/
 mlruns/
-pretrained_models/
 
 # Translations
 *.mo
@@ -176,4 +175,8 @@ pnnx*
 # calibration image
 calibration_*.npy
 
-data/dota/
+dota_reorganized/
+dota_sliced/
+dota_multi_sliced/
+
+data/

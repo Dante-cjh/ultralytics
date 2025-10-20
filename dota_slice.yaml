@@ -1,0 +1,37 @@
+# DOTA v1.5 切片数据集配置文件
+# Dataset configuration for sliced DOTA v1.5 dataset
+
+# 数据路径配置
+path: ./dota_sliced  # 数据集根目录
+train: images/train  # 训练图像相对路径
+val: images/val      # 验证图像相对路径
+
+# 类别数量
+nc: 16
+
+# 类别名称 (DOTA v1.5 完整16类)
+names:
+  0: plane
+  1: ship
+  2: storage-tank
+  3: baseball-diamond
+  4: tennis-court
+  5: basketball-court
+  6: ground-track-field
+  7: harbor
+  8: bridge
+  9: large-vehicle
+  10: small-vehicle
+  11: helicopter
+  12: roundabout
+  13: soccer-ball-field
+  14: swimming-pool
+  15: container-crane
+
+# 数据集描述
+description: |
+  DOTA v1.5 (A Large-scale Dataset for Object Detection in Aerial images) - 切片版本
+  包含航空图像中的目标检测，支持旋转边界框(OBB)检测任务。
+  
+  此配置文件对应切片后的DOTA v1.5数据集，
+  包含完整的16个类别，经过滑动窗口切片处理，适用于训练和验证。

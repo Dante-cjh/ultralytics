@@ -84,63 +84,29 @@ class Model(torch.nn.Module):
         verbose: bool = False,
     ) -> None:
         """
-        初始化YOLO模型类的新实例。
+        Initialize a new instance of the YOLO model class.
 
-        这是Model类的构造函数，负责根据提供的模型路径或名称设置模型。
-        支持多种模型来源，包括本地文件、Ultralytics HUB模型、Triton Server模型，
-        或者已经初始化的Model实例。
-
-        功能特点：
-        - 支持多种模型来源：本地文件、HUB模型、Triton Server
-        - 自动推断任务类型（如检测、分割、分类等）
-        - 支持模型配置的灵活覆盖
-        - 初始化训练、预测、导出所需的核心组件
-
-        初始化流程：
-        1. 检查是否为已初始化的Model实例（如果是则复制属性）
-        2. 检查是否为Ultralytics HUB模型
-        3. 检查是否为Triton Server模型
-        4. 根据文件扩展名决定加载方式（.yaml/.yml新建，其他格式加载权重）
-        5. 设置模型相关属性
-        6. 清理父类的training属性以避免冲突
+        This constructor sets up the model based on the provided model path or name. It handles various types of
+        model sources, including local files, Ultralytics HUB models, and Triton Server models. The method
+        initializes several important attributes of the model and prepares it for operations like training,
+        prediction, or export.
 
         Args:
-            model: 模型路径或名称，支持多种格式：
-                   - 字符串：本地文件路径（如"yolo11n.pt"）
-                   - 字符串：Ultralytics HUB模型ID
-                   - 字符串：Triton Server URL
-                   - Path：Path对象格式的文件路径
-                   - Model：已初始化的Model实例（将复制属性）
-            task: 模型任务类型，可选值：
-                  - 'detect': 目标检测
-                  - 'segment': 实例分割
-                  - 'classify': 图像分类
-                  - 'pose': 姿态估计
-                  - 'obb': 定向边界框检测
-                  如果为None，将自动从配置推断
-            verbose: 是否启用详细输出模式，显示模型加载和初始化的详细信息
+            model (str | Path | Model): Path or name of the model to load or create. Can be a local file path, a
+                model name from Ultralytics HUB, a Triton Server model, or an already initialized Model instance.
+            task (str, optional): The specific task for the model. If None, it will be inferred from the config.
+            verbose (bool): If True, enables verbose output during the model's initialization and subsequent
+                operations.
 
         Raises:
-            FileNotFoundError: 指定模型文件不存在或无法访问
-            ValueError: 模型文件或配置无效/不支持
-            ImportError: 特定模型类型依赖的库未安装（如HUB SDK）
+            FileNotFoundError: If the specified model file does not exist or is inaccessible.
+            ValueError: If the model file or configuration is invalid or unsupported.
+            ImportError: If required dependencies for specific model types (like HUB SDK) are not installed.
 
-        使用示例：
-            # 从预训练权重加载
+        Examples:
             >>> model = Model("yolo11n.pt")
-            
-            # 从配置文件新建模型
-            >>> model = Model("yolo11n.yaml", task="detect")
-            
-            # 从Ultralytics HUB加载
-            >>> model = Model("https://hub.ultralytics.com/models/MODEL_ID")
-            
-            # 从Triton Server加载
-            >>> model = Model("http://localhost:8000/v2/models/yolo11n")
-            
-            # 复制已有模型
-            >>> original_model = Model("yolo11n.pt")
-            >>> new_model = Model(original_model)
+            >>> model = Model("path/to/model.yaml", task="detect")
+            >>> model = Model("hub_model", verbose=True)
         """
         if isinstance(model, Model):
             self.__dict__ = model.__dict__  # accepts an already initialized Model
@@ -535,54 +501,35 @@ class Model(torch.nn.Module):
         **kwargs: Any,
     ) -> List[Results]:
         """
-        使用YOLO模型对给定图像源进行预测推理。
+        Perform predictions on the given image source using the YOLO model.
 
-        这是Model类的核心方法之一，用于执行目标检测、分割等任务的推理。
-        支持多种图像输入格式，包括文件路径、URL、PIL图像、numpy数组和PyTorch张量。
-
-        功能特点：
-        - 支持批量推理和流式处理
-        - 可配置置信度阈值、NMS阈值等参数
-        - 自动处理图像预处理和后处理
-        - 支持自定义预测器
+        This method facilitates the prediction process, allowing various configurations through keyword arguments.
+        It supports predictions with custom predictors or the default predictor method. The method handles different
+        types of image sources and can operate in a streaming mode.
 
         Args:
-            source: 输入图像源，支持多种格式：
-                   - 字符串：文件路径或URL
-                   - PIL.Image：PIL图像对象
-                   - np.ndarray：numpy数组格式的图像
-                   - torch.Tensor：PyTorch张量
-                   - list/tuple：上述格式的批量输入
-            stream: 是否以流模式处理输入（适用于视频流）
-            predictor: 自定义预测器实例，None则使用默认预测器
-            **kwargs: 其他配置参数，如：
-                     - conf: 置信度阈值（默认0.25）
-                     - iou: NMS IoU阈值
-                     - imgsz: 输入图像大小
-                     - device: 运行设备（cpu/cuda）
+            source (str | Path | int | PIL.Image | np.ndarray | torch.Tensor | List | Tuple): The source
+                of the image(s) to make predictions on. Accepts various types including file paths, URLs, PIL
+                images, numpy arrays, and torch tensors.
+            stream (bool): If True, treats the input source as a continuous stream for predictions.
+            predictor (BasePredictor, optional): An instance of a custom predictor class for making predictions.
+                If None, the method uses a default predictor.
+            **kwargs (Any): Additional keyword arguments for configuring the prediction process.
 
         Returns:
-            List[Results]: 预测结果列表，每个元素是一个Results对象，包含：
-                          - boxes: 检测框信息
-                          - masks: 分割掩码（分割任务）
-                          - keypoints: 关键点（姿态估计任务）
-                          - names: 类别名称
-                          - orig_img: 原始图像
+            (List[ultralytics.engine.results.Results]): A list of prediction results, each encapsulated in a
+                Results object.
 
-        使用示例：
+        Examples:
             >>> model = YOLO("yolo11n.pt")
-            >>> results = model.predict("image.jpg", conf=0.5)
+            >>> results = model.predict(source="path/to/image.jpg", conf=0.25)
             >>> for r in results:
-            ...     print(f"检测到 {len(r.boxes)} 个目标")
-            ...     for box in r.boxes:
-            ...         print(f"类别: {r.names[int(box.cls)]}, 置信度: {box.conf:.2f}")
+            ...     print(r.boxes.data)  # print detection bounding boxes
 
-        内部流程：
-        1. 检查输入源，设置默认值
-        2. 配置预测参数
-        3. 初始化预测器（如需要）
-        4. 执行推理
-        5. 返回后处理结果
+        Notes:
+            - If 'source' is not provided, it defaults to the ASSETS constant with a warning.
+            - The method sets up a new predictor if not already present and updates its arguments with each call.
+            - For SAM-type models, 'prompts' can be passed as a keyword argument.
         """
         if source is None:
             source = "https://ultralytics.com/images/boats.jpg" if self.task == "obb" else ASSETS
@@ -743,76 +690,35 @@ class Model(torch.nn.Module):
         **kwargs: Any,
     ) -> str:
         """
-        将模型导出为适合部署的不同格式。
+        Export the model to a different format suitable for deployment.
 
-        这是Model类的核心导出方法，支持将PyTorch模型转换为多种部署格式。
-        支持导出为ONNX、TensorRT、CoreML、TFLite、OpenVINO等格式，便于在不同平台和框架上部署。
-
-        支持的导出格式：
-        - onnx: Open Neural Network Exchange格式
-        - engine: TensorRT引擎（NVIDIA GPU优化）
-        - coreml: Apple CoreML格式（iOS/macOS）
-        - tflite: TensorFlow Lite（移动设备）
-        - openvino: Intel OpenVINO格式
-        - saved_model: TensorFlow SavedModel
-        - torchscript: PyTorch TorchScript
-        - paddle: PaddlePaddle格式
-
-        功能特点：
-        - 支持FP32、FP16、INT8量化导出
-        - 支持动态输入尺寸
-        - 支持模型简化和优化
-        - 自动处理输入输出节点
-        - 支持添加后处理模块（如NMS）
-
-        导出流程：
-        1. 检查是否为PyTorch模型
-        2. 解析导出配置参数
-        3. 初始化导出器
-        4. 执行模型转换
-        5. 保存导出文件
-        6. 验证导出结果
+        This method facilitates the export of the model to various formats (e.g., ONNX, TorchScript) for deployment
+        purposes. It uses the 'Exporter' class for the export process, combining model-specific overrides, method
+        defaults, and any additional arguments provided.
 
         Args:
-            **kwargs: 导出配置参数，常用参数包括：
-                     - format: 导出格式（默认'onnx'）
-                     - imgsz: 输入图像大小（默认模型配置）
-                     - batch: 批次大小（默认1）
-                     - device: 导出设备（默认'cpu'）
-                     - half: 是否使用FP16半精度（默认False）
-                     - int8: 是否使用INT8量化（默认False）
-                     - dynamic: 是否启用动态输入尺寸（默认False）
-                     - simplify: 是否简化ONNX模型（默认False）
-                     - nms: 是否添加NMS后处理（默认False）
-                     - workspace: TensorRT工作空间大小（默认4GB）
-                     - data: 用于INT8校准的数据集路径
+            **kwargs (Any): Arbitrary keyword arguments to customize the export process. These are combined with
+                the model's overrides and method defaults. Common arguments include:
+                format (str): Export format (e.g., 'onnx', 'engine', 'coreml').
+                half (bool): Export model in half-precision.
+                int8 (bool): Export model in int8 precision.
+                device (str): Device to run the export on.
+                workspace (int): Maximum memory workspace size for TensorRT engines.
+                nms (bool): Add Non-Maximum Suppression (NMS) module to model.
+                simplify (bool): Simplify ONNX model.
 
         Returns:
-            str: 导出模型的文件路径
+            (str): The path to the exported model file.
 
         Raises:
-            AssertionError: 如果模型不是PyTorch模型
-            ValueError: 如果指定了不支持的导出格式
-            RuntimeError: 如果导出过程失败
+            AssertionError: If the model is not a PyTorch model.
+            ValueError: If an unsupported export format is specified.
+            RuntimeError: If the export process fails due to errors.
 
-        使用示例：
+        Examples:
             >>> model = YOLO("yolo11n.pt")
-            >>> # 导出为ONNX格式
-            >>> onnx_path = model.export(format="onnx", dynamic=True, simplify=True)
-            >>> print(f"模型已导出到: {onnx_path}")
-
-            >>> # 导出为TensorRT引擎
-            >>> engine_path = model.export(format="engine", half=True, workspace=8)
-
-            >>> # 导出为CoreML格式
-            >>> coreml_path = model.export(format="coreml", nms=True)
-
-        注意事项：
-        - TensorRT导出需要NVIDIA GPU和TensorRT库
-        - INT8量化需要校准数据集，可能影响模型精度
-        - 动态输入可能增加推理延迟
-        - 某些格式不支持所有YOLO功能（如NMS）
-        - 导出后建议验证模型性能和精度
+            >>> model.export(format="onnx", dynamic=True, simplify=True)
+            'path/to/exported/model.onnx'
         """
         self._check_is_pytorch_model()
         from .exporter import Exporter
@@ -833,70 +739,35 @@ class Model(torch.nn.Module):
         **kwargs: Any,
     ):
         """
-        使用指定数据集和配置训练模型。
+        Train the model using the specified dataset and training configuration.
 
-        这是Model类的核心训练方法，提供完整的模型训练流程。支持从检查点恢复训练、
-        与Ultralytics HUB集成、以及训练后的模型更新等功能。
+        This method facilitates model training with a range of customizable settings. It supports training with a
+        custom trainer or the default training approach. The method handles scenarios such as resuming training
+        from a checkpoint, integrating with Ultralytics HUB, and updating model and configuration after training.
 
-        功能特点：
-        - 支持自定义训练器或默认训练器
-        - 自动处理数据集加载和预处理
-        - 支持分布式训练（DDP）
-        - 集成Ultralytics HUB训练管理
-        - 自动保存最佳模型和训练日志
-        - 支持训练中断后恢复
-
-        训练流程：
-        1. 检查是否为PyTorch模型
-        2. 处理Ultralytics HUB集成（如使用）
-        3. 检查pip包更新
-        4. 合并和解析训练配置参数
-        5. 初始化训练器
-        6. 设置模型结构（如非恢复训练）
-        7. 执行训练过程
-        8. 更新模型和配置（训练完成后）
+        When using Ultralytics HUB, if the session has a loaded model, the method prioritizes HUB training
+        arguments and warns if local arguments are provided. It checks for pip updates and combines default
+        configurations, method-specific defaults, and user-provided arguments to configure the training process.
 
         Args:
-            trainer: 自定义训练器实例，None则使用默认训练器
-            **kwargs: 训练配置参数，常用参数包括：
-                     - data: 数据集配置文件路径（必需）
-                     - epochs: 训练轮数（默认100）
-                     - batch: 批次大小（默认16）
-                     - imgsz: 输入图像大小（默认640）
-                     - device: 训练设备（'cpu', 'cuda', '0', '0,1,2,3'）
-                     - workers: 数据加载线程数（默认8）
-                     - optimizer: 优化器类型（'SGD', 'Adam', 'AdamW'）
-                     - lr0: 初始学习率（默认0.01）
-                     - patience: 早停耐心轮数（默认50）
-                     - save: 是否保存训练结果（默认True）
-                     - cache: 是否缓存数据集（默认False）
-                     - resume: 是否从检查点恢复训练
+            trainer (BaseTrainer, optional): Custom trainer instance for model training. If None, uses default.
+            **kwargs (Any): Arbitrary keyword arguments for training configuration. Common options include:
+                data (str): Path to dataset configuration file.
+                epochs (int): Number of training epochs.
+                batch (int): Batch size for training.
+                imgsz (int): Input image size.
+                device (str): Device to run training on (e.g., 'cuda', 'cpu').
+                workers (int): Number of worker threads for data loading.
+                optimizer (str): Optimizer to use for training.
+                lr0 (float): Initial learning rate.
+                patience (int): Epochs to wait for no observable improvement for early stopping of training.
 
         Returns:
-            Dict | None: 训练指标字典，包含：
-                        - fitness: 综合适应度分数
-                        - metrics/mAP50-95: 各类别的mAP
-                        - metrics/precision: 精确率
-                        - metrics/recall: 召回率
-                        - 其他任务特定指标
-                        如果训练失败则返回None
+            (Dict | None): Training metrics if available and training is successful; otherwise, None.
 
-        使用示例：
+        Examples:
             >>> model = YOLO("yolo11n.pt")
-            >>> results = model.train(
-            ...     data="coco8.yaml",
-            ...     epochs=100,
-            ...     batch=16,
-            ...     imgsz=640,
-            ...     device="cuda:0"
-            ... )
-            >>> print(f"最佳mAP50-95: {results.results_dict['metrics/mAP50-95']:.3f}")
-
-        注意事项：
-        - 使用Ultralytics HUB时，本地参数会被HUB参数覆盖
-        - 训练过程中会自动创建runs/train目录保存结果
-        - 支持通过resume参数从上次中断处继续训练
-        - 多GPU训练时会自动使用分布式训练
+            >>> results = model.train(data="coco8.yaml", epochs=3)
         """
         self._check_is_pytorch_model()
         if hasattr(self.session, "model") and self.session.model.id:  # Ultralytics HUB session with loaded model

@@ -1,0 +1,49 @@
+# DOTA数据集配置文件
+# 用于YOLO OBB (Oriented Bounding Box) 训练
+
+# 数据集路径（相对于此配置文件）
+path: ./dota_reorganized  # 数据集根目录
+train: images/train  # 训练集图像路径（相对于path）
+val: images/val      # 验证集图像路径（相对于path）
+
+# 类别数量
+nc: 16
+
+# 类别名称列表（按ID顺序排列）- DOTA v1.5
+names:
+  0: plane
+  1: ship
+  2: storage-tank
+  3: baseball-diamond
+  4: tennis-court
+  5: basketball-court
+  6: ground-track-field
+  7: harbor
+  8: bridge
+  9: large-vehicle
+  10: small-vehicle
+  11: helicopter
+  12: roundabout
+  13: soccer-ball-field
+  14: swimming-pool
+  15: container-crane
+
+# 数据集信息
+download: |
+  # DOTA数据集已经通过官方ultralytics转换脚本处理和拆分
+  # 原始数据来源：https://captain-whu.github.io/DOTA/dataset.html
+  # 
+  # 数据集统计：
+  # - 总图像数量: 1869
+  # - 训练集: 1411 张图像
+  # - 验证集: 458 张图像
+  # - 类别数量: 16 (DOTA v1.5完整版)
+  # - 标注格式: YOLO OBB (Oriented Bounding Box)
+
+# 数据集描述
+description: |
+  DOTA v1.5 (A Large-scale Dataset for Object Detection in Aerial Images) 数据集
+  包含航空图像中的目标检测，支持旋转边界框(OBB)检测任务。
+  
+  此配置文件对应已经预处理和拆分的DOTA v1.5子集，
+  包含完整的16个类别，按3:1比例分为训练集和验证集，适用于调试和开发。

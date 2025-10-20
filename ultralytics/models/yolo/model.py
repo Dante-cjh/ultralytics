@@ -3,8 +3,6 @@
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
-import torch
-
 from ultralytics.data.build import load_inference_source
 from ultralytics.engine.model import Model
 from ultralytics.models import yolo
@@ -317,7 +315,7 @@ class YOLOE(Model):
         assert isinstance(self.model, YOLOEModel)
         return self.model.get_vocab(names)
 
-    def set_classes(self, classes: List[str], embeddings: Optional[torch.Tensor] = None) -> None:
+    def set_classes(self, classes: List[str], embeddings) -> None:
         """
         Set the model's class names and embeddings for detection.
 
@@ -326,8 +324,6 @@ class YOLOE(Model):
             embeddings (torch.Tensor): Embeddings corresponding to the classes.
         """
         assert isinstance(self.model, YOLOEModel)
-        if embeddings is None:
-            embeddings = self.get_text_pe(classes)  # generate text embeddings if not provided
         self.model.set_classes(classes, embeddings)
         # Verify no background class is present
         assert " " not in classes
@@ -370,7 +366,7 @@ class YOLOE(Model):
         stream: bool = False,
         visual_prompts: Dict[str, List] = {},
         refer_image=None,
-        predictor=yolo.yoloe.YOLOEVPDetectPredictor,
+        predictor=None,
         **kwargs,
     ):
         """
@@ -406,16 +402,14 @@ class YOLOE(Model):
                 f"Expected equal number of bounding boxes and classes, but got {len(visual_prompts['bboxes'])} and "
                 f"{len(visual_prompts['cls'])} respectively"
             )
-            if type(self.predictor) is not predictor:
-                self.predictor = predictor(
+            if not isinstance(self.predictor, yolo.yoloe.YOLOEVPDetectPredictor):
+                self.predictor = (predictor or yolo.yoloe.YOLOEVPDetectPredictor)(
                     overrides={
                         "task": self.model.task,
                         "mode": "predict",
                         "save": False,
                         "verbose": refer_image is None,
                         "batch": 1,
-                        "device": kwargs.get("device", None),
-                        "half": kwargs.get("half", False),
                     },
                     _callbacks=self.callbacks,
                 )

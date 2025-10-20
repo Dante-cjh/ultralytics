@@ -160,19 +160,12 @@ class Inference:
             ],
             key=lambda x: (M_ORD.index(x[:7].lower()), T_ORD.index(x[7:].lower() or "")),
         )
-        if self.model_path:  # Insert user provided custom model in available_models
-            available_models.insert(0, self.model_path)
+        if self.model_path:  # If user provided the custom model, insert model without suffix as *.pt is added later
+            available_models.insert(0, self.model_path.split(".pt", 1)[0])
         selected_model = self.st.sidebar.selectbox("Model", available_models)
 
         with self.st.spinner("Model is downloading..."):
-            if (
-                selected_model.endswith((".pt", ".onnx", ".torchscript", ".mlpackage", ".engine"))
-                or "openvino_model" in selected_model
-            ):
-                model_path = selected_model
-            else:
-                model_path = f"{selected_model.lower()}.pt"  # Default to .pt if no model provided during function call.
-            self.model = YOLO(model_path)  # Load the YOLO model
+            self.model = YOLO(f"{selected_model.lower()}.pt")  # Load the YOLO model
             class_names = list(self.model.names.values())  # Convert dictionary to list of class names
         self.st.success("Model loaded successfully!")
 

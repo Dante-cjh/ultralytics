@@ -204,13 +204,11 @@ class DetectionValidator(BaseValidator):
                 continue
 
             # Save
-            if self.args.save_json or self.args.save_txt:
-                predn_scaled = self.scale_preds(predn, pbatch)
             if self.args.save_json:
-                self.pred_to_json(predn_scaled, pbatch)
+                self.pred_to_json(predn, pbatch)
             if self.args.save_txt:
                 self.save_one_txt(
-                    predn_scaled,
+                    predn,
                     self.args.save_conf,
                     pbatch["ori_shape"],
                     self.save_dir / "labels" / f"{Path(pbatch['im_file']).stem}.txt",
@@ -375,7 +373,13 @@ class DetectionValidator(BaseValidator):
         """
         stem = Path(pbatch["im_file"]).stem
         image_id = int(stem) if stem.isnumeric() else stem
-        box = ops.xyxy2xywh(predn["bboxes"])  # xywh
+        box = ops.scale_boxes(
+            pbatch["imgsz"],
+            predn["bboxes"].clone(),
+            pbatch["ori_shape"],
+            ratio_pad=pbatch["ratio_pad"],
+        )
+        box = ops.xyxy2xywh(box)  # xywh
         box[:, :2] -= box[:, 2:] / 2  # xy center to top-left corner
         for b, s, c in zip(box.tolist(), predn["conf"].tolist(), predn["cls"].tolist()):
             self.jdict.append(
@@ -386,18 +390,6 @@ class DetectionValidator(BaseValidator):
                     "score": round(s, 5),
                 }
             )
-
-    def scale_preds(self, predn: Dict[str, torch.Tensor], pbatch: Dict[str, Any]) -> Dict[str, torch.Tensor]:
-        """Scales predictions to the original image size."""
-        return {
-            **predn,
-            "bboxes": ops.scale_boxes(
-                pbatch["imgsz"],
-                predn["bboxes"].clone(),
-                pbatch["ori_shape"],
-                ratio_pad=pbatch["ratio_pad"],
-            ),
-        }
 
     def eval_json(self, stats: Dict[str, Any]) -> Dict[str, Any]:
         """

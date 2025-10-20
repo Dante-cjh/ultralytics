@@ -2,7 +2,7 @@
 # 用于YOLO11训练的气球检测数据集
 
 # 数据集根目录 (转换后的YOLO格式数据)
-path: ~/private_data/ultralytics/data/balloon/yolo_format
+path: /home/cjh/mmdetection/data/balloon/yolo_format
 
 # 训练/验证/测试集配置
 train: train.txt      # 训练图像列表文件
