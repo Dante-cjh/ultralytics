@@ -1,0 +1,308 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+"""
+Balloon 数据集 SAHI 切片推理脚本
+使用训练好的模型对大尺寸图像进行切片推理
+"""
+
+import argparse
+from pathlib import Path
+from typing import Optional
+
+import cv2
+import numpy as np
+from sahi import AutoDetectionModel
+from sahi.predict import get_sliced_prediction
+from sahi.utils.cv import read_image
+
+from ultralytics.utils import LOGGER
+
+
+class BalloonSAHIInference:
+    """Balloon 数据集 SAHI 切片推理类"""
+    
+    def __init__(
+        self,
+        model_path: str,
+        confidence_threshold: float = 0.25,
+        device: str = "cuda:0"
+    ):
+        """
+        初始化 SAHI 推理器
+        
+        Args:
+            model_path (str): 训练好的模型路径
+            confidence_threshold (float): 置信度阈值
+            device (str): 设备 ('cuda:0' 或 'cpu')
+        """
+        self.model_path = Path(model_path)
+        self.confidence_threshold = confidence_threshold
+        self.device = device
+        self.detection_model = None
+        
+        # 验证模型文件
+        if not self.model_path.exists():
+            raise FileNotFoundError(f"模型文件不存在: {self.model_path}")
+        
+        LOGGER.info(f"🔍 加载模型: {self.model_path}")
+        self._load_model()
+    
+    def _load_model(self):
+        """加载 YOLO 模型"""
+        # SAHI 0.11.14 使用 yolov8 作为 model_type
+        self.detection_model = AutoDetectionModel.from_pretrained(
+            model_type="yolov8",
+            model_path=str(self.model_path),
+            confidence_threshold=self.confidence_threshold,
+            device=self.device,
+        )
+        LOGGER.info(f"✅ 模型加载成功")
+    
+    def predict_image(
+        self,
+        image_path: str,
+        slice_height: int = 640,
+        slice_width: int = 640,
+        overlap_height_ratio: float = 0.2,
+        overlap_width_ratio: float = 0.2,
+        save_dir: Optional[str] = None,
+        visualize: bool = True,
+    ) -> dict:
+        """
+        对单张图像进行切片推理
+        
+        Args:
+            image_path (str): 图像路径
+            slice_height (int): 切片高度
+            slice_width (int): 切片宽度
+            overlap_height_ratio (float): 高度重叠比例 (0.0-1.0)
+            overlap_width_ratio (float): 宽度重叠比例 (0.0-1.0)
+            save_dir (str, optional): 保存可视化结果的目录
+            visualize (bool): 是否保存可视化结果
+        
+        Returns:
+            dict: 包含检测结果的字典
+        """
+        image_path = Path(image_path)
+        if not image_path.exists():
+            raise FileNotFoundError(f"图像文件不存在: {image_path}")
+        
+        LOGGER.info(f"📸 处理图像: {image_path.name}")
+        
+        # 读取图像
+        image = read_image(str(image_path))
+        h, w = image.shape[:2]
+        LOGGER.info(f"   图像尺寸: {w}x{h}")
+        
+        # 执行切片推理
+        result = get_sliced_prediction(
+            image,
+            self.detection_model,
+            slice_height=slice_height,
+            slice_width=slice_width,
+            overlap_height_ratio=overlap_height_ratio,
+            overlap_width_ratio=overlap_width_ratio,
+        )
+        
+        # 统计检测结果
+        num_detections = len(result.object_prediction_list)
+        LOGGER.info(f"   检测到 {num_detections} 个目标")
+        
+        # 保存可视化结果
+        if visualize and save_dir:
+            save_path = Path(save_dir)
+            save_path.mkdir(parents=True, exist_ok=True)
+            
+            # 手动绘制检测框（SAHI 0.11.14 的 export_visuals 有bug）
+            vis_image = image.copy()
+            for pred in result.object_prediction_list:
+                bbox = pred.bbox.to_xyxy()
+                x1, y1, x2, y2 = map(int, bbox)
+                
+                # 绘制边界框（绿色）
+                cv2.rectangle(vis_image, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                
+                # 绘制标签和置信度
+                label = f"{pred.category.name}: {pred.score.value:.2f}"
+                
+                # 计算标签背景大小
+                (label_w, label_h), baseline = cv2.getTextSize(
+                    label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2
+                )
+                
+                # 绘制标签背景
+                cv2.rectangle(
+                    vis_image, 
+                    (x1, y1 - label_h - baseline - 5), 
+                    (x1 + label_w, y1), 
+                    (0, 255, 0), 
+                    -1
+                )
+                
+                # 绘制标签文字（黑色）
+                cv2.putText(
+                    vis_image, label, (x1, y1 - baseline - 5), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 2
+                )
+            
+            # 保存图像
+            output_path = save_path / f"{image_path.stem}_visual.jpg"
+            cv2.imwrite(str(output_path), cv2.cvtColor(vis_image, cv2.COLOR_RGB2BGR))
+            LOGGER.info(f"   可视化结果保存到: {output_path}")
+        
+        # 返回结果信息
+        return {
+            "image_path": str(image_path),
+            "image_size": (w, h),
+            "num_detections": num_detections,
+            "detections": result.object_prediction_list,
+            "result": result,
+        }
+    
+    def predict_directory(
+        self,
+        image_dir: str,
+        slice_height: int = 640,
+        slice_width: int = 640,
+        overlap_height_ratio: float = 0.2,
+        overlap_width_ratio: float = 0.2,
+        save_dir: str = "runs/sahi_inference",
+        visualize: bool = True,
+        image_extensions: tuple = (".jpg", ".jpeg", ".png", ".bmp"),
+    ) -> list:
+        """
+        对目录中所有图像进行批量推理
+        
+        Args:
+            image_dir (str): 图像目录
+            slice_height (int): 切片高度
+            slice_width (int): 切片宽度
+            overlap_height_ratio (float): 高度重叠比例
+            overlap_width_ratio (float): 宽度重叠比例
+            save_dir (str): 保存结果的目录
+            visualize (bool): 是否保存可视化结果
+            image_extensions (tuple): 支持的图像扩展名
+        
+        Returns:
+            list: 所有图像的检测结果列表
+        """
+        image_dir = Path(image_dir)
+        if not image_dir.exists():
+            raise FileNotFoundError(f"图像目录不存在: {image_dir}")
+        
+        # 获取所有图像文件
+        image_files = []
+        for ext in image_extensions:
+            image_files.extend(image_dir.glob(f"*{ext}"))
+            image_files.extend(image_dir.glob(f"*{ext.upper()}"))
+        
+        if not image_files:
+            LOGGER.warning(f"⚠️ 目录中未找到图像文件: {image_dir}")
+            return []
+        
+        LOGGER.info(f"🎯 开始批量推理，共 {len(image_files)} 张图像")
+        LOGGER.info(f"   切片参数: {slice_width}x{slice_height}, 重叠: {overlap_width_ratio:.1%}x{overlap_height_ratio:.1%}")
+        
+        # 处理每张图像
+        results = []
+        for i, image_path in enumerate(image_files, 1):
+            LOGGER.info(f"[{i}/{len(image_files)}]")
+            try:
+                result = self.predict_image(
+                    image_path=str(image_path),
+                    slice_height=slice_height,
+                    slice_width=slice_width,
+                    overlap_height_ratio=overlap_height_ratio,
+                    overlap_width_ratio=overlap_width_ratio,
+                    save_dir=save_dir,
+                    visualize=visualize,
+                )
+                results.append(result)
+            except Exception as e:
+                LOGGER.error(f"   ❌ 处理失败: {e}")
+        
+        # 统计总结
+        total_detections = sum(r["num_detections"] for r in results)
+        LOGGER.info(f"\n🎉 批量推理完成！")
+        LOGGER.info(f"   处理图像: {len(results)}/{len(image_files)}")
+        LOGGER.info(f"   总检测数: {total_detections}")
+        LOGGER.info(f"   平均每张: {total_detections/len(results):.1f} 个目标")
+        if visualize:
+            LOGGER.info(f"   结果保存: {save_dir}")
+        
+        return results
+
+
+def main():
+    """主函数"""
+    parser = argparse.ArgumentParser(description="Balloon 数据集 SAHI 切片推理脚本")
+    
+    # 模型参数
+    parser.add_argument("--model", type=str, required=True, help="训练好的模型路径")
+    parser.add_argument("--confidence", type=float, default=0.25, help="置信度阈值")
+    parser.add_argument("--device", type=str, default="cuda:0", help="设备 (cuda:0 或 cpu)")
+    
+    # 输入输出
+    parser.add_argument("--source", type=str, required=True, help="图像路径或目录")
+    parser.add_argument("--save-dir", type=str, default="runs/sahi_inference", help="结果保存目录")
+    parser.add_argument("--no-visualize", action="store_true", help="不保存可视化结果")
+    
+    # 切片参数
+    parser.add_argument("--slice-height", type=int, default=640, help="切片高度")
+    parser.add_argument("--slice-width", type=int, default=640, help="切片宽度")
+    parser.add_argument("--overlap-height", type=float, default=0.2, help="高度重叠比例 (0.0-1.0)")
+    parser.add_argument("--overlap-width", type=float, default=0.2, help="宽度重叠比例 (0.0-1.0)")
+    
+    args = parser.parse_args()
+    
+    try:
+        # 创建推理器
+        LOGGER.info("🚀 初始化 SAHI 推理器...")
+        inferencer = BalloonSAHIInference(
+            model_path=args.model,
+            confidence_threshold=args.confidence,
+            device=args.device,
+        )
+        
+        # 判断输入是文件还是目录
+        source_path = Path(args.source)
+        visualize = not args.no_visualize
+        
+        if source_path.is_file():
+            # 单张图像推理
+            result = inferencer.predict_image(
+                image_path=str(source_path),
+                slice_height=args.slice_height,
+                slice_width=args.slice_width,
+                overlap_height_ratio=args.overlap_height,
+                overlap_width_ratio=args.overlap_width,
+                save_dir=args.save_dir,
+                visualize=visualize,
+            )
+            LOGGER.info(f"\n✅ 推理完成！")
+            
+        elif source_path.is_dir():
+            # 批量推理
+            results = inferencer.predict_directory(
+                image_dir=str(source_path),
+                slice_height=args.slice_height,
+                slice_width=args.slice_width,
+                overlap_height_ratio=args.overlap_height,
+                overlap_width_ratio=args.overlap_width,
+                save_dir=args.save_dir,
+                visualize=visualize,
+            )
+        else:
+            LOGGER.error(f"❌ 无效的输入路径: {source_path}")
+            return
+        
+    except Exception as e:
+        LOGGER.error(f"❌ 推理失败: {e}")
+        import traceback
+        traceback.print_exc()
+
+
+if __name__ == "__main__":
+    main()
+

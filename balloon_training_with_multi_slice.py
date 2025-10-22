@@ -163,6 +163,7 @@ class BalloonTrainingPipeline:
         imgsz: int = 640,
         batch: int = 16,
         device: int = 0,
+        patience: int = 30,
         resume: bool = False
     ) -> Optional[str]:
         """
@@ -173,6 +174,7 @@ class BalloonTrainingPipeline:
             imgsz (int): 输入图像尺寸
             batch (int): 批次大小
             device (int): GPU 设备编号
+            patience (int): 早停耐心值
             resume (bool): 是否恢复训练
         
         Returns:
@@ -187,7 +189,7 @@ class BalloonTrainingPipeline:
         model = YOLO(self.model_name)
         LOGGER.info(f"模型: {self.model_name}")
         LOGGER.info(f"数据: {dataset_yaml}")
-        LOGGER.info(f"训练参数: epochs={epochs}, imgsz={imgsz}, batch={batch}")
+        LOGGER.info(f"训练参数: epochs={epochs}, imgsz={imgsz}, batch={batch}, patience={patience}")
         
         try:
             # 开始训练
@@ -207,7 +209,7 @@ class BalloonTrainingPipeline:
                 exist_ok=True,            # 允许覆盖现有实验
 
                 # === 早停和保存 ===
-                patience=30,              # 早停耐心值
+                patience=patience,        # 早停耐心值
                 save_period=20,           # 每20轮保存一次
 
                 # === 训练优化 ===
@@ -300,6 +302,7 @@ class BalloonTrainingPipeline:
         imgsz: int = 640,
         batch: int = 16,
         device: int = 0,
+        patience: int = 30,
         resume: bool = False
     ) -> bool:
         """
@@ -322,7 +325,7 @@ class BalloonTrainingPipeline:
             return False
         
         # 3. 模型训练
-        best_model = self.train_model(epochs, imgsz, batch, device, resume)
+        best_model = self.train_model(epochs, imgsz, batch, device, patience, resume)
         if best_model is None:
             return False
         
@@ -357,6 +360,7 @@ def main():
     parser.add_argument("--imgsz", type=int, default=640, help="输入图像尺寸")
     parser.add_argument("--batch", type=int, default=16, help="批次大小")
     parser.add_argument("--device", type=int, default=0, help="GPU 设备编号")
+    parser.add_argument("--patience", type=int, default=30, help="早停耐心值")
     parser.add_argument("--resume", action="store_true", help="恢复训练")
     
     # 模式选择
@@ -389,6 +393,7 @@ def main():
                 imgsz=args.imgsz,
                 batch=args.batch,
                 device=args.device,
+                patience=args.patience,
                 resume=args.resume
             )
             success = best_model is not None
@@ -403,6 +408,7 @@ def main():
                 imgsz=args.imgsz,
                 batch=args.batch,
                 device=args.device,
+                patience=args.patience,
                 resume=args.resume
             )
         

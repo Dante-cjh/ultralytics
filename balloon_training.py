@@ -7,10 +7,18 @@ Balloon数据集YOLO11训练脚本
 
 from ultralytics import YOLO
 import os
+import argparse
 from pathlib import Path
 
 
-def train_balloon_detector():
+def train_balloon_detector(
+    model_name: str = "yolo11n.pt",
+    epochs: int = 200,
+    batch: int = 16,
+    device: int = 5,
+    patience: int = 10,
+    project_name: str = "balloon_exp"
+):
     """训练气球检测器"""
     
     print("🎈 开始训练Balloon检测器")
@@ -26,10 +34,11 @@ def train_balloon_detector():
         return
     
     print(f"📁 使用配置文件: {config_file}")
+    print(f"🔧 训练参数: model={model_name}, epochs={epochs}, batch={batch}, device={device}, patience={patience}")
     
     # 1. 加载YOLO11预训练模型
     print("\n📦 加载YOLO11预训练模型...")
-    model = YOLO('yolo11n.pt')  # 使用nano版本，速度快，适合小数据集
+    model = YOLO(model_name)
     
     # 显示模型信息
     print("🔍 模型信息:")
@@ -44,14 +53,14 @@ def train_balloon_detector():
         data=str(config_file),    # 数据集配置文件
         
         # === 基础训练参数 ===
-        epochs=200,               # 训练轮数 (小数据集，适中即可)
-        batch=16,                 # 批大小 (根据GPU内存调整)
+        epochs=epochs,            # 训练轮数
+        batch=batch,              # 批大小
         imgsz=640,                # 输入图像尺寸
-        device=5,                 # GPU设备 (根据您的GPU编号调整)
+        device=device,            # GPU设备
         
         # === 项目管理 ===
         project='runs/detect',    # 项目目录
-        name='balloon_exp',       # 实验名称
+        name=project_name,        # 实验名称
         exist_ok=True,            # 允许覆盖现有实验
         
         # === 迁移学习优化参数 ===
@@ -63,8 +72,8 @@ def train_balloon_detector():
         warmup_momentum=0.8,      # 预热动量
         
         # === 早停和保存 ===
-        patience=10,              # 早停耐心值 (小数据集容易过拟合)
-        save_period=10,           # 每10轮保存一次
+        patience=patience,        # 早停耐心值
+        save_period=20,           # 每20轮保存一次
         
         # === 数据增强 (适中设置，避免过度增强) ===
         hsv_h=0.01,              # 色调增强 (较小)
@@ -96,6 +105,7 @@ def train_balloon_detector():
         single_cls=False,        # 多类别训练 (虽然只有1类)
         plots=True,              # 生成训练图表
         
+        
         # === 验证设置 ===
         val=True,                # 训练时进行验证
         split='val',             # 验证集分割
@@ -108,19 +118,19 @@ def train_balloon_detector():
     )
     
     print("\n✅ 训练完成!")
-    print(f"📊 训练结果保存在: runs/detect/balloon_exp/")
-    print(f"🏆 最佳模型: runs/detect/balloon_exp/weights/best.pt")
-    print(f"📈 训练曲线: runs/detect/balloon_exp/results.png")
+    print(f"📊 训练结果保存在: runs/detect/{project_name}/")
+    print(f"🏆 最佳模型: runs/detect/{project_name}/weights/best.pt")
+    print(f"📈 训练曲线: runs/detect/{project_name}/results.png")
     
-    return results
+    return results, project_name
 
 
-def validate_model():
+def validate_model(project_name: str = "balloon_exp"):
     """验证训练好的模型"""
     print("\n🔍 验证训练好的模型...")
     
     # 加载最佳模型
-    model_path = "runs/detect/balloon_exp/weights/best.pt"
+    model_path = f"runs/detect/{project_name}/weights/best.pt"
     config_file = Path("~/ultralytics/my_balloon.yaml").expanduser()
     
     if not os.path.exists(model_path):
@@ -149,11 +159,11 @@ def validate_model():
     return results
 
 
-def predict_sample():
+def predict_sample(project_name: str = "balloon_exp"):
     """使用训练好的模型进行预测"""
     print("\n🔮 使用模型进行预测...")
     
-    model_path = "runs/detect/balloon_exp/weights/best.pt"
+    model_path = f"runs/detect/{project_name}/weights/best.pt"
     
     if not os.path.exists(model_path):
         print(f"❌ 模型文件不存在: {model_path}")
@@ -189,11 +199,11 @@ def predict_sample():
         print("❌ 没有找到验证图像进行预测")
 
 
-def export_model():
+def export_model(project_name: str = "balloon_exp"):
     """导出模型为不同格式"""
     print("\n📤 导出模型...")
     
-    model_path = "runs/detect/balloon_exp/weights/best.pt"
+    model_path = f"runs/detect/{project_name}/weights/best.pt"
     
     if not os.path.exists(model_path):
         print(f"❌ 模型文件不存在: {model_path}")
@@ -217,30 +227,58 @@ def export_model():
 
 def main():
     """主函数"""
+    parser = argparse.ArgumentParser(description="Balloon数据集YOLO11训练脚本")
+    
+    # 训练参数
+    parser.add_argument("--model", type=str, default="yolo11n.pt", help="模型名称或路径")
+    parser.add_argument("--epochs", type=int, default=200, help="训练轮数")
+    parser.add_argument("--batch", type=int, default=16, help="批次大小")
+    parser.add_argument("--device", type=int, default=5, help="GPU设备编号")
+    parser.add_argument("--patience", type=int, default=20, help="早停耐心值")
+    parser.add_argument("--project-name", type=str, default="balloon_exp", help="项目名称")
+    
+    # 执行步骤
+    parser.add_argument("--train-only", action="store_true", help="仅训练，不进行验证和预测")
+    parser.add_argument("--skip-export", action="store_true", help="跳过模型导出")
+    
+    args = parser.parse_args()
+    
     print("🎈 Balloon检测器训练管道")
     print("=" * 60)
     
     try:
         # 步骤1: 训练模型
         print("第1步: 训练模型")
-        train_results = train_balloon_detector()
+        train_results, project_name = train_balloon_detector(
+            model_name=args.model,
+            epochs=args.epochs,
+            batch=args.batch,
+            device=args.device,
+            patience=args.patience,
+            project_name=args.project_name
+        )
+        
+        if args.train_only:
+            print("\n✅ 训练完成！(仅训练模式)")
+            return
         
         # 步骤2: 验证模型
         print("\n第2步: 验证模型")
-        val_results = validate_model()
+        val_results = validate_model(project_name)
         
         # 步骤3: 样例预测
         print("\n第3步: 样例预测")
-        predict_sample()
+        predict_sample(project_name)
         
         # 步骤4: 导出模型
-        print("\n第4步: 导出模型")
-        export_model()
+        if not args.skip_export:
+            print("\n第4步: 导出模型")
+            export_model(project_name)
         
         print("\n" + "=" * 60)
         print("🎉 所有步骤完成!")
-        print("📊 查看训练结果: runs/detect/balloon_exp/results.png")
-        print("🔮 查看预测结果: runs/detect/balloon_pred/")
+        print(f"📊 查看训练结果: runs/detect/{project_name}/results.png")
+        print(f"🔮 查看预测结果: runs/detect/balloon_pred/")
         print("=" * 60)
         
     except Exception as e:
@@ -249,6 +287,8 @@ def main():
         print("  1. 数据集是否已正确转换")
         print("  2. GPU设备是否可用")
         print("  3. 内存是否足够")
+        import traceback
+        traceback.print_exc()
 
 
 if __name__ == "__main__":
