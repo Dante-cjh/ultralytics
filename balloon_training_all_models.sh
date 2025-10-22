@@ -120,7 +120,7 @@ log_info "时间戳: ${TIMESTAMP}"
 log_info "训练参数: epochs=${EPOCHS}, batch=${BATCH}, patience=${PATIENCE}, device=${DEVICE}"
 
 # 定义模型列表
-declare -a MODELS=("yolo11n.pt" "yolo11l.pt" "yolo11l.pt")
+declare -a MODELS=("yolo11m.pt" "yolo11l.pt" "yolo11x.pt")
 declare -a MODEL_NAMES=("yolo11m" "yolo11l" "yolo11x")
 
 # 记录开始时间
