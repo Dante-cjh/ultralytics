@@ -5,6 +5,12 @@
 # Balloon 数据集 - 多尺度切片多模型训练脚本
 # 依次训练 YOLO11m, YOLO11l, YOLO11x 模型（使用多尺度切片数据）
 # 第一次运行时进行数据切片，后续模型仅训练
+# 
+# 重要说明：
+# - 训练使用多尺度切片数据（SLICE_DIR）提高小目标检测效果
+# - SAHI推理使用原始完整图像（DATA_ROOT）进行切片推理后拼接
+# - 这样可以得到完整图像的检测结果，而不是切片图像的检测结果
+# - 多尺度切片：0.5x, 1.0x, 1.5x 三种尺度，提高模型鲁棒性
 ################################################################################
 
 set -e  # 遇到错误立即退出
@@ -19,8 +25,9 @@ DEVICE=5
 # 数据路径
 DATA_ROOT="/home/cjh/mmdetection/data/balloon/yolo_format"
 SLICE_DIR="/home/cjh/mmdetection/data/balloon/yolo_format_multi_slice"
-VAL_DIR="${SLICE_DIR}/images/val"
-TEST_DIR="${SLICE_DIR}/images/test"
+# SAHI推理使用原始完整图像，而不是切片图像
+VAL_DIR="${DATA_ROOT}/images/val"
+TEST_DIR="${DATA_ROOT}/images/test"
 
 # 切片参数（多尺度）
 CROP_SIZE=640
@@ -209,13 +216,15 @@ for i in "${!MODELS[@]}"; do
         continue
     fi
     
-    # 3. 在验证集上进行SAHI推理
+    # 3. 在验证集上进行SAHI推理（使用原始完整图像）
     VAL_SAVE_DIR="runs/sahi_inference/${PROJECT_NAME}_val"
+    log_info "🔍 使用原始完整图像进行SAHI推理: ${VAL_DIR}"
     run_sahi_inference "${BEST_MODEL}" "${VAL_DIR}" "${VAL_SAVE_DIR}" "Validation" || log_error "验证集推理失败"
     
-    # 4. 在测试集上进行SAHI推理（如果存在）
+    # 4. 在测试集上进行SAHI推理（如果存在，使用原始完整图像）
     if [ -d "${TEST_DIR}" ]; then
         TEST_SAVE_DIR="runs/sahi_inference/${PROJECT_NAME}_test"
+        log_info "🔍 使用原始完整图像进行SAHI推理: ${TEST_DIR}"
         run_sahi_inference "${BEST_MODEL}" "${TEST_DIR}" "${TEST_SAVE_DIR}" "Test" || log_error "测试集推理失败"
     else
         log_info "⚠️ 测试集目录不存在，跳过测试集推理"

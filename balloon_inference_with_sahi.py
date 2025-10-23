@@ -18,6 +18,14 @@ from sahi.utils.cv import read_image
 
 from ultralytics.utils import LOGGER
 
+# 检查SAHI版本
+try:
+    import sahi
+    LOGGER.info(f"📦 SAHI版本: {sahi.__version__}")
+except ImportError:
+    LOGGER.error("❌ SAHI未安装，请运行: pip install sahi")
+    exit(1)
+
 
 class BalloonSAHIInference:
     """Balloon 数据集 SAHI 切片推理类"""
@@ -50,14 +58,21 @@ class BalloonSAHIInference:
     
     def _load_model(self):
         """加载 YOLO 模型"""
-        # SAHI 0.11.14 使用 yolov8 作为 model_type
-        self.detection_model = AutoDetectionModel.from_pretrained(
-            model_type="yolov8",
-            model_path=str(self.model_path),
-            confidence_threshold=self.confidence_threshold,
-            device=self.device,
-        )
-        LOGGER.info(f"✅ 模型加载成功")
+        try:
+            # SAHI 0.11.14 使用 yolov8 作为 model_type
+            self.detection_model = AutoDetectionModel.from_pretrained(
+                model_type="yolov8",
+                model_path=str(self.model_path),
+                confidence_threshold=self.confidence_threshold,
+                device=self.device,
+            )
+            LOGGER.info(f"✅ 模型加载成功")
+            LOGGER.info(f"   模型路径: {self.model_path}")
+            LOGGER.info(f"   置信度阈值: {self.confidence_threshold}")
+            LOGGER.info(f"   设备: {self.device}")
+        except Exception as e:
+            LOGGER.error(f"❌ 模型加载失败: {e}")
+            raise
     
     def predict_image(
         self,
@@ -96,55 +111,97 @@ class BalloonSAHIInference:
         LOGGER.info(f"   图像尺寸: {w}x{h}")
         
         # 执行切片推理
-        result = get_sliced_prediction(
-            image,
-            self.detection_model,
-            slice_height=slice_height,
-            slice_width=slice_width,
-            overlap_height_ratio=overlap_height_ratio,
-            overlap_width_ratio=overlap_width_ratio,
-        )
+        try:
+            LOGGER.info(f"   开始SAHI切片推理...")
+            LOGGER.info(f"   切片参数: {slice_width}x{slice_height}, 重叠: {overlap_width_ratio:.1%}x{overlap_height_ratio:.1%}")
+            
+            result = get_sliced_prediction(
+                image,
+                self.detection_model,
+                slice_height=slice_height,
+                slice_width=slice_width,
+                overlap_height_ratio=overlap_height_ratio,
+                overlap_width_ratio=overlap_width_ratio,
+            )
+            LOGGER.info(f"   SAHI推理完成")
+        except Exception as e:
+            LOGGER.error(f"   ❌ SAHI推理失败: {e}")
+            raise
         
         # 统计检测结果
         num_detections = len(result.object_prediction_list)
         LOGGER.info(f"   检测到 {num_detections} 个目标")
+        
+        # 调试信息：打印检测结果详情
+        if num_detections > 0:
+            LOGGER.info(f"   检测详情:")
+            for i, pred in enumerate(result.object_prediction_list[:5]):  # 只显示前5个
+                bbox = pred.bbox.to_xyxy()
+                LOGGER.info(f"     [{i+1}] {pred.category.name}: {pred.score.value:.3f} "
+                           f"bbox=({bbox[0]:.1f}, {bbox[1]:.1f}, {bbox[2]:.1f}, {bbox[3]:.1f})")
+            if num_detections > 5:
+                LOGGER.info(f"     ... 还有 {num_detections - 5} 个检测结果")
         
         # 保存可视化结果
         if visualize and save_dir:
             save_path = Path(save_dir)
             save_path.mkdir(parents=True, exist_ok=True)
             
-            # 手动绘制检测框（SAHI 0.11.14 的 export_visuals 有bug）
+            # 手动绘制检测框（修复版本）
             vis_image = image.copy()
+            img_h, img_w = vis_image.shape[:2]
+            
             for pred in result.object_prediction_list:
                 bbox = pred.bbox.to_xyxy()
                 x1, y1, x2, y2 = map(int, bbox)
                 
-                # 绘制边界框（绿色）
-                cv2.rectangle(vis_image, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                # 边界检查：确保坐标在图像范围内
+                x1 = max(0, min(x1, img_w - 1))
+                y1 = max(0, min(y1, img_h - 1))
+                x2 = max(0, min(x2, img_w - 1))
+                y2 = max(0, min(y2, img_h - 1))
                 
-                # 绘制标签和置信度
-                label = f"{pred.category.name}: {pred.score.value:.2f}"
-                
-                # 计算标签背景大小
-                (label_w, label_h), baseline = cv2.getTextSize(
-                    label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2
-                )
-                
-                # 绘制标签背景
-                cv2.rectangle(
-                    vis_image, 
-                    (x1, y1 - label_h - baseline - 5), 
-                    (x1 + label_w, y1), 
-                    (0, 255, 0), 
-                    -1
-                )
-                
-                # 绘制标签文字（黑色）
-                cv2.putText(
-                    vis_image, label, (x1, y1 - baseline - 5), 
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 2
-                )
+                # 确保边界框有效
+                if x2 > x1 and y2 > y1:
+                    # 绘制边界框（绿色）
+                    cv2.rectangle(vis_image, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                    
+                    # 绘制标签和置信度
+                    label = f"{pred.category.name}: {pred.score.value:.2f}"
+                    
+                    # 计算标签背景大小
+                    (label_w, label_h), baseline = cv2.getTextSize(
+                        label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2
+                    )
+                    
+                    # 计算标签位置，确保不超出图像边界
+                    label_x = x1
+                    label_y = y1 - 5  # 标签在边界框上方
+                    
+                    # 如果标签会超出图像顶部，则放在边界框内部
+                    if label_y - label_h < 0:
+                        label_y = y1 + label_h + 5
+                    
+                    # 确保标签不超出图像边界
+                    label_x = max(0, min(label_x, img_w - label_w))
+                    label_y = max(label_h, min(label_y, img_h))
+                    
+                    # 绘制标签背景
+                    cv2.rectangle(
+                        vis_image, 
+                        (label_x, label_y - label_h - baseline), 
+                        (label_x + label_w, label_y), 
+                        (0, 255, 0), 
+                        -1
+                    )
+                    
+                    # 绘制标签文字（黑色）
+                    cv2.putText(
+                        vis_image, label, (label_x, label_y - baseline), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 2
+                    )
+                else:
+                    LOGGER.warning(f"   跳过无效边界框: ({x1}, {y1}, {x2}, {y2})")
             
             # 保存图像
             output_path = save_path / f"{image_path.stem}_visual.jpg"
