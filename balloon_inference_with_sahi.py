@@ -79,10 +79,15 @@ class BalloonSAHIInference:
         image_path: str,
         slice_height: int = 640,
         slice_width: int = 640,
-        overlap_height_ratio: float = 0.2,
-        overlap_width_ratio: float = 0.2,
+        overlap_height_ratio: float = 0.15,
+        overlap_width_ratio: float = 0.15,
+        postprocess_type: str = "NMS",
+        postprocess_threshold: float = 0.5,
+        postprocess_metric: str = "IOS",
         save_dir: Optional[str] = None,
         visualize: bool = True,
+        min_box_area: int = 100,  # 最小检测框面积
+        max_detections: int = 100,  # 最大检测数量
     ) -> dict:
         """
         对单张图像进行切片推理
@@ -122,25 +127,56 @@ class BalloonSAHIInference:
                 slice_width=slice_width,
                 overlap_height_ratio=overlap_height_ratio,
                 overlap_width_ratio=overlap_width_ratio,
+                postprocess_type=postprocess_type,  # 使用NMS去除重复检测框
+                postprocess_match_metric=postprocess_metric,  # 使用IOS匹配指标
+                postprocess_match_threshold=postprocess_threshold,  # NMS IoU阈值
+                postprocess_class_agnostic=False,  # 类别感知的NMS
             )
             LOGGER.info(f"   SAHI推理完成")
         except Exception as e:
             LOGGER.error(f"   ❌ SAHI推理失败: {e}")
             raise
         
+        # 应用额外的过滤逻辑
+        filtered_predictions = []
+        for pred in result.object_prediction_list:
+            bbox = pred.bbox.to_xyxy()
+            x1, y1, x2, y2 = bbox
+            box_area = (x2 - x1) * (y2 - y1)
+            
+            # 过滤条件
+            if box_area >= min_box_area:
+                filtered_predictions.append(pred)
+        
+        # 按置信度排序并限制数量
+        filtered_predictions.sort(key=lambda x: x.score.value, reverse=True)
+        if len(filtered_predictions) > max_detections:
+            filtered_predictions = filtered_predictions[:max_detections]
+            LOGGER.info(f"   检测框数量限制: {len(result.object_prediction_list)} -> {max_detections}")
+        
+        # 更新结果
+        result.object_prediction_list = filtered_predictions
+        
         # 统计检测结果
         num_detections = len(result.object_prediction_list)
-        LOGGER.info(f"   检测到 {num_detections} 个目标")
+        LOGGER.info(f"   检测到 {num_detections} 个目标 (过滤后)")
         
         # 调试信息：打印检测结果详情
         if num_detections > 0:
             LOGGER.info(f"   检测详情:")
-            for i, pred in enumerate(result.object_prediction_list[:5]):  # 只显示前5个
+            # 按置信度排序显示
+            sorted_predictions = sorted(result.object_prediction_list, 
+                                      key=lambda x: x.score.value, reverse=True)
+            for i, pred in enumerate(sorted_predictions[:5]):  # 只显示前5个
                 bbox = pred.bbox.to_xyxy()
                 LOGGER.info(f"     [{i+1}] {pred.category.name}: {pred.score.value:.3f} "
                            f"bbox=({bbox[0]:.1f}, {bbox[1]:.1f}, {bbox[2]:.1f}, {bbox[3]:.1f})")
             if num_detections > 5:
                 LOGGER.info(f"     ... 还有 {num_detections - 5} 个检测结果")
+            
+            # 统计置信度分布
+            confidences = [pred.score.value for pred in result.object_prediction_list]
+            LOGGER.info(f"   置信度统计: 最高={max(confidences):.3f}, 最低={min(confidences):.3f}, 平均={sum(confidences)/len(confidences):.3f}")
         
         # 保存可视化结果
         if visualize and save_dir:
@@ -222,10 +258,15 @@ class BalloonSAHIInference:
         image_dir: str,
         slice_height: int = 640,
         slice_width: int = 640,
-        overlap_height_ratio: float = 0.2,
-        overlap_width_ratio: float = 0.2,
+        overlap_height_ratio: float = 0.15,
+        overlap_width_ratio: float = 0.15,
+        postprocess_type: str = "NMS",
+        postprocess_threshold: float = 0.5,
+        postprocess_metric: str = "IOS",
         save_dir: str = "runs/sahi_inference",
         visualize: bool = True,
+        min_box_area: int = 100,
+        max_detections: int = 100,
         image_extensions: tuple = (".jpg", ".jpeg", ".png", ".bmp"),
     ) -> list:
         """
@@ -272,8 +313,13 @@ class BalloonSAHIInference:
                     slice_width=slice_width,
                     overlap_height_ratio=overlap_height_ratio,
                     overlap_width_ratio=overlap_width_ratio,
+                    postprocess_type=postprocess_type,
+                    postprocess_threshold=postprocess_threshold,
+                    postprocess_metric=postprocess_metric,
                     save_dir=save_dir,
                     visualize=visualize,
+                    min_box_area=min_box_area,
+                    max_detections=max_detections,
                 )
                 results.append(result)
             except Exception as e:
@@ -308,8 +354,17 @@ def main():
     # 切片参数
     parser.add_argument("--slice-height", type=int, default=640, help="切片高度")
     parser.add_argument("--slice-width", type=int, default=640, help="切片宽度")
-    parser.add_argument("--overlap-height", type=float, default=0.2, help="高度重叠比例 (0.0-1.0)")
-    parser.add_argument("--overlap-width", type=float, default=0.2, help="宽度重叠比例 (0.0-1.0)")
+    parser.add_argument("--overlap-height", type=float, default=0.15, help="高度重叠比例 (0.0-1.0)")
+    parser.add_argument("--overlap-width", type=float, default=0.15, help="宽度重叠比例 (0.0-1.0)")
+    
+    # 后处理参数
+    parser.add_argument("--postprocess-type", type=str, default="NMS", choices=["NMS", "NMM"], help="后处理方法")
+    parser.add_argument("--postprocess-threshold", type=float, default=0.5, help="NMS/NMM阈值")
+    parser.add_argument("--postprocess-metric", type=str, default="IOS", choices=["IOS", "IOU"], help="匹配指标")
+    
+    # 高级过滤参数
+    parser.add_argument("--min-box-area", type=int, default=100, help="最小检测框面积")
+    parser.add_argument("--max-detections", type=int, default=100, help="最大检测数量")
     
     args = parser.parse_args()
     
@@ -334,8 +389,13 @@ def main():
                 slice_width=args.slice_width,
                 overlap_height_ratio=args.overlap_height,
                 overlap_width_ratio=args.overlap_width,
+                postprocess_type=args.postprocess_type,
+                postprocess_threshold=args.postprocess_threshold,
+                postprocess_metric=args.postprocess_metric,
                 save_dir=args.save_dir,
                 visualize=visualize,
+                min_box_area=args.min_box_area,
+                max_detections=args.max_detections,
             )
             LOGGER.info(f"\n✅ 推理完成！")
             
@@ -347,8 +407,13 @@ def main():
                 slice_width=args.slice_width,
                 overlap_height_ratio=args.overlap_height,
                 overlap_width_ratio=args.overlap_width,
+                postprocess_type=args.postprocess_type,
+                postprocess_threshold=args.postprocess_threshold,
+                postprocess_metric=args.postprocess_metric,
                 save_dir=args.save_dir,
                 visualize=visualize,
+                min_box_area=args.min_box_area,
+                max_detections=args.max_detections,
             )
         else:
             LOGGER.error(f"❌ 无效的输入路径: {source_path}")
