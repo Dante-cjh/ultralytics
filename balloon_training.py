@@ -13,8 +13,8 @@ from pathlib import Path
 
 def train_balloon_detector(
     model_name: str = "yolo11n.pt",
-    epochs: int = 200,
-    batch: int = 16,
+    epochs: int = 100,
+    batch: int = 8,
     device: int = 5,
     patience: int = 10,
     project_name: str = "balloon_exp"
@@ -25,7 +25,7 @@ def train_balloon_detector(
     print("=" * 60)
     
     # 配置文件路径
-    config_file = Path("~/ultralytics/my_balloon.yaml").expanduser()
+    config_file = Path("/home/cjh/ultralytics/my_balloon.yaml").expanduser()
     
     # 检查配置文件是否存在
     if not config_file.exists():
@@ -55,7 +55,7 @@ def train_balloon_detector(
         # === 基础训练参数 ===
         epochs=epochs,            # 训练轮数
         batch=batch,              # 批大小
-        imgsz=640,                # 输入图像尺寸
+        imgsz=1024,                # 输入图像尺寸
         device=device,            # GPU设备
         
         # === 项目管理 ===
@@ -64,37 +64,38 @@ def train_balloon_detector(
         exist_ok=True,            # 允许覆盖现有实验
         
         # === 迁移学习优化参数 ===
-        lr0=0.001,                # 较小的学习率 (迁移学习推荐)
-        lrf=0.1,                  # 最终学习率比例
+        # 注意：小数据集(61张)需要更保守的学习率
+        lr0=0.001,                # 初始学习率 (YOLO默认值，小数据集适用)
+        lrf=0.01,                 # 最终学习率比例 (更小，避免后期震荡)
         momentum=0.937,           # 动量
         weight_decay=0.0005,      # 权重衰减
-        warmup_epochs=3,          # 预热轮数
+        warmup_epochs=5,          # 预热轮数 (增加，让模型稳定过渡)
         warmup_momentum=0.8,      # 预热动量
         
         # === 早停和保存 ===
         patience=patience,        # 早停耐心值
         save_period=20,           # 每20轮保存一次
         
-        # === 数据增强 (适中设置，避免过度增强) ===
-        hsv_h=0.01,              # 色调增强 (较小)
-        hsv_s=0.5,               # 饱和度增强 (适中)
-        hsv_v=0.3,               # 明度增强 (适中)
-        degrees=10.0,            # 旋转角度 (适中)
-        translate=0.1,           # 平移比例 (小幅度)
-        scale=0.3,               # 缩放比例 (适中)
-        shear=5.0,               # 剪切角度 (小幅度)
-        perspective=0.0001,      # 透视变换 (很小)
+        # === 数据增强 (小数据集需要更温和的增强，避免过拟合) ===
+        hsv_h=0.015,             # 色调增强
+        hsv_s=0.7,               # 饱和度增强
+        hsv_v=0.4,               # 明度增强
+        degrees=0.0,             # 旋转角度 (关闭，小数据集容易导致不稳定)
+        translate=0.1,           # 平移比例
+        scale=0.5,               # 缩放比例
+        shear=0.0,               # 剪切角度 (关闭)
+        perspective=0.0,         # 透视变换 (关闭)
         fliplr=0.5,              # 水平翻转概率
-        flipud=0.0,              # 垂直翻转概率 (气球通常不倒置)
-        mosaic=0.8,              # 马赛克增强 (适中)
-        mixup=0.0,               # MixUp增强 (关闭，避免混乱边界)
+        flipud=0.0,              # 垂直翻转概率
+        mosaic=1.0,              # 马赛克增强 (全开，小数据集有帮助)
+        mixup=0.0,               # MixUp增强 (关闭)
         copy_paste=0.0,          # 复制粘贴增强 (关闭)
         
         # === 训练优化 ===
         amp=True,                # 自动混合精度训练
-        cache=False,             # 不缓存图像 (数据集较小)
+        cache=True,              # 缓存图像 (数据集小，可以缓存加速)
         rect=False,              # 不使用矩形训练
-        cos_lr=False,            # 不使用余弦学习率调度
+        cos_lr=True,             # 使用余弦学习率调度 (更平滑的学习率下降)
         close_mosaic=10,         # 最后10轮关闭马赛克增强
         
         # === 其他设置 ===
@@ -131,7 +132,7 @@ def validate_model(project_name: str = "balloon_exp"):
     
     # 加载最佳模型
     model_path = f"runs/detect/{project_name}/weights/best.pt"
-    config_file = Path("~/ultralytics/my_balloon.yaml").expanduser()
+    config_file = Path("/home/cjh/ultralytics/my_balloon.yaml").expanduser()
     
     if not os.path.exists(model_path):
         print(f"❌ 模型文件不存在: {model_path}")
@@ -143,8 +144,8 @@ def validate_model(project_name: str = "balloon_exp"):
     # 在验证集上评估
     results = model.val(
         data=str(config_file),
-        batch=32,
-        imgsz=640,
+        batch=8,
+        imgsz=1024,
         conf=0.25,               # 置信度阈值
         iou=0.5,                 # NMS IoU阈值
         save_json=True,          # 保存详细结果
@@ -215,7 +216,7 @@ def export_model(project_name: str = "balloon_exp"):
     print("🔄 导出ONNX格式...")
     onnx_path = model.export(
         format='onnx',          # 导出格式
-        imgsz=640,              # 输入尺寸
+        imgsz=1024,              # 输入尺寸
         simplify=True,          # 简化模型
         dynamic=False,          # 固定输入尺寸
         opset=11                # ONNX opset版本
@@ -232,7 +233,7 @@ def main():
     # 训练参数
     parser.add_argument("--model", type=str, default="yolo11n.pt", help="模型名称或路径")
     parser.add_argument("--epochs", type=int, default=200, help="训练轮数")
-    parser.add_argument("--batch", type=int, default=16, help="批次大小")
+    parser.add_argument("--batch", type=int, default=8, help="批次大小")
     parser.add_argument("--device", type=int, default=5, help="GPU设备编号")
     parser.add_argument("--patience", type=int, default=20, help="早停耐心值")
     parser.add_argument("--project-name", type=str, default="balloon_exp", help="项目名称")
@@ -245,6 +246,7 @@ def main():
     
     print("🎈 Balloon检测器训练管道")
     print("=" * 60)
+    print(f"📋 接收到的参数: model={args.model}, epochs={args.epochs}, batch={args.batch}")
     
     try:
         # 步骤1: 训练模型

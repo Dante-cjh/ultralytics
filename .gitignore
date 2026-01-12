@@ -178,3 +178,7 @@ calibration_*.npy
 dota_reorganized/
 dota_sliced/
 dota_multi_sliced/
+
+data/
+
+pretrained_models/

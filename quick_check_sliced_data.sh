@@ -12,7 +12,7 @@ echo "🔍 快速检查切片数据质量"
 echo "======================================================"
 
 # 默认数据路径
-DATA_ROOT="${1:-/home/cjh/mmdetection/data/balloon/yolo_format_slice}"
+DATA_ROOT="${1:-/public/home/baichen/download/dcu_yolo/ultralytics/data/D1_type3/yolo_format_slice}"
 
 if [ ! -d "$DATA_ROOT" ]; then
     echo -e "${RED}❌ 数据目录不存在: $DATA_ROOT${NC}"
