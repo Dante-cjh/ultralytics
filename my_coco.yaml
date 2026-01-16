@@ -1,7 +1,7 @@
 # 自定义COCO数据集配置
 # 指向现有的COCO数据集：/home/cjh/mmdetection/data/coco
 
-path: /home/cjh/mmdetection/data/coco  # 数据集根目录（绝对路径）
+path: ./data/coco  # 数据集根目录（绝对路径）
 train: train2017.txt  # 训练图像列表
 val: val2017.txt      # 验证图像列表
 test: test2017        # 测试图像目录（可选）

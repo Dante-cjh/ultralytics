@@ -182,13 +182,29 @@ class BalloonTrainingPipeline:
         """
         LOGGER.info("🚀 开始模型训练...")
         
-        # 使用预定义的数据集配置文件
-        dataset_yaml = "balloon_slice.yaml"
+        # 创建临时数据集配置文件，使用实际的切片目录
+        import yaml
+        import tempfile
+        
+        dataset_config = {
+            'path': str(self.slice_dir.absolute()),
+            'train': 'images/train',
+            'val': 'images/val',
+            'nc': 1,
+            'names': {0: 'balloon'}
+        }
+        
+        # 保存临时yaml文件
+        temp_yaml = Path(tempfile.gettempdir()) / f"{self.project_name}_data.yaml"
+        with open(temp_yaml, 'w') as f:
+            yaml.dump(dataset_config, f)
+        
+        dataset_yaml = str(temp_yaml)
         
         # 初始化模型
         model = YOLO(self.model_name)
         LOGGER.info(f"模型: {self.model_name}")
-        LOGGER.info(f"数据: {dataset_yaml}")
+        LOGGER.info(f"数据: {dataset_yaml} -> {self.slice_dir}")
         LOGGER.info(f"训练参数: epochs={epochs}, imgsz={imgsz}, batch={batch}, patience={patience}")
         
         try:

@@ -14,12 +14,12 @@ set -e  # 遇到错误立即退出
 # ============================================================================
 
 # 设备配置
-DEVICE=1
+DEVICE=5
 
 # 训练参数
-EPOCHS=2
-BATCH=16
-PATIENCE=20
+EPOCHS=100
+BATCH=16          # 增大batch size，提高训练稳定性
+PATIENCE=20       # 增加耐心值，避免过早停止
 
 # 数据路径
 VAL_DIR="/home/cjh/mmdetection/data/balloon/yolo_format/images/val"
@@ -161,8 +161,8 @@ for i in "${!MODELS[@]}"; do
         --model "${BEST_MODEL}" \
         --data "/home/cjh/ultralytics/my_balloon.yaml" \
         --val \
-        --batch 32 \
-        --imgsz 640 \
+        --batch 8 \
+        --imgsz 1024 \
         --confidence ${CONFIDENCE} \
         --iou ${IOU_THRESHOLD} \
         --device "cuda:${DEVICE}" \

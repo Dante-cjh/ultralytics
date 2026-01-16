@@ -1,0 +1,1839 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%23409EFF' width='100' height='100' rx='20'/><circle cx='50' cy='50' r='25' fill='%23fff'/><circle cx='50' cy='50' r='15' fill='%23409EFF'/></svg>" type="image/svg+xml">
+    <title>检测系统</title>
+    <!-- Vue 3 -->
+    <script src="/static/vue.global.prod.min.js"></script>
+    <!-- Element Plus -->
+    <link rel="stylesheet" href="/static/index.css" />
+    <script src="/static/index.full.min.js"></script>
+    <script src="/static/element-plus-icons-vue.global.iife.min.js"></script>
+    <!-- Fabric.js -->
+    <script src="/static/fabric.min.js"></script>
+    <!-- Axios -->
+    <script src="/static/axios.min.js"></script>
+    
+    <style>
+        :root {
+            --el-color-primary: #409EFF;
+            --el-bg-color-page: #f2f3f5;
+            --header-height: 60px;
+            --sidebar-width: 300px;
+            --property-width: 280px;
+        }
+        
+        body { margin: 0; padding: 0; font-family: 'Helvetica Neue', Helvetica, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', Arial, sans-serif; background-color: var(--el-bg-color-page); overflow: hidden; }
+        #app { height: 100vh; display: flex; flex-direction: column; }
+        
+        .app-header {
+            height: var(--header-height);
+            background: #fff;
+            border-bottom: 1px solid #dcdfe6;
+            display: flex;
+            align-items: center;
+            padding: 0 20px;
+            justify-content: space-between;
+            box-shadow: 0 1px 4px rgba(0,21,41,.08);
+            z-index: 10;
+        }
+        .app-title {
+            font-size: 20px;
+            font-weight: 600;
+            color: #303133;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .main-layout {
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+        }
+        
+        .sidebar {
+            width: var(--sidebar-width);
+            background: #fff;
+            border-right: 1px solid #dcdfe6;
+            display: flex;
+            flex-direction: column;
+            z-index: 9;
+        }
+        
+        .workspace-container {
+            flex: 1;
+            background: #f0f2f5;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .workspace-canvas {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+            background-color: #e0e0e0;
+            touch-action: none; /* Prevent browser gestures */
+            background-image: 
+                linear-gradient(45deg, #ccc 25%, transparent 25%), 
+                linear-gradient(-45deg, #ccc 25%, transparent 25%), 
+                linear-gradient(45deg, transparent 75%, #ccc 75%), 
+                linear-gradient(-45deg, transparent 75%, #ccc 75%);
+            background-size: 20px 20px;
+            background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+        }
+        
+        .property-panel {
+            width: var(--property-width);
+            background: #fff;
+            border-left: 1px solid #dcdfe6;
+            display: flex;
+            flex-direction: column;
+            z-index: 9;
+        }
+        
+        /* Fix Sidebar Tabs Scroll */
+        .sidebar-tabs {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .sidebar-tabs .el-tabs__header {
+            margin-bottom: 0;
+        }
+        .sidebar-tabs .el-tabs__content {
+            flex: 1;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        .sidebar-tabs .el-tab-pane {
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-thumb { background: #c0c4cc; border-radius: 3px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        
+        .task-item {
+            border-left: 3px solid transparent;
+            transition: all 0.3s;
+        }
+        .task-item:hover { background-color: #ecf5ff; }
+        .task-item.active { background-color: #ecf5ff; border-left-color: var(--el-color-primary); }
+        
+        .image-item {
+            border-bottom: 1px solid #ebeef5;
+            cursor: pointer;
+            transition: background 0.2s;
+            padding: 10px 15px;
+        }
+        .image-item:hover { background: #f5f7fa; }
+        .image-item.active { background: #ecf5ff; color: var(--el-color-primary); }
+        
+        .canvas-toolbar {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255,255,255,0.9);
+            border-radius: 8px;
+            padding: 8px 16px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            display: flex;
+            gap: 10px;
+            backdrop-filter: blur(4px);
+            z-index: 100;
+        }
+
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: #909399;
+            font-size: 14px;
+        }
+        
+        .status-badge {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 6px;
+        }
+        .status-completed { background-color: #67C23A; }
+        .status-processing { background-color: #E6A23C; }
+        .status-failed { background-color: #F56C6C; }
+        .status-pending { background-color: #909399; }
+
+        .param-group-title {
+            font-size: 13px;
+            font-weight: bold;
+            color: #606266;
+            margin: 15px 0 10px;
+            padding-left: 8px;
+            border-left: 3px solid var(--el-color-primary);
+        }
+        .correction-toolbar {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #ffffff;
+            border-radius: 28px;
+            padding: 12px 32px;
+            display: flex;
+            gap: 24px;
+            z-index: 200;
+            color: #303133;
+            align-items: center;
+            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            border: 1px solid #ebeef5;
+        }
+        
+        .correction-toolbar:hover {
+            transform: translateX(-50%) translateY(-2px);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+        }
+        
+        .correction-canvas-container {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: #f2f3f5;
+            position: relative;
+        }
+
+        .correction-header {
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            color: #303133; 
+            padding: 0 32px; 
+            height: 64px;
+            background: #ffffff;
+            border-bottom: 1px solid #e4e7ed;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+            z-index: 10;
+            position: relative;
+        }
+
+        /* 强制去除全屏弹窗的默认内边距 */
+        .correction-dialog .el-dialog__body {
+            padding: 0 !important;
+            margin: 0 !important;
+            height: calc(100vh - 64px) !important;
+            overflow: hidden !important;
+            display: flex;
+            flex-direction: column;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <!-- 顶部导航 -->
+        <header class="app-header">
+            <div class="app-title">
+                <el-icon :size="24" color="#409EFF"><Aim /></el-icon>
+                SAHI 智能标注系统
+            </div>
+            <div>
+                <el-button type="primary" @click="showNewTaskDialog = true" icon="Plus" round>新建推理任务</el-button>
+            </div>
+        </header>
+        
+        <div class="main-layout">
+            <!-- 左侧任务/图片列表 -->
+            <div class="sidebar">
+                <el-tabs v-model="activeTab" stretch class="sidebar-tabs">
+                    <!-- 任务列表 -->
+                    <el-tab-pane label="任务列表" name="tasks">
+                        <div style="padding: 10px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; background: #fafafa;">
+                            <span style="font-size: 12px; color: #909399;">共 {{ tasks.length }} 个任务</span>
+                            <el-button size="small" type="success" plain @click="showExportDialog = true" :disabled="selectedTaskIds.length === 0" icon="Download">
+                                导出 ({{ selectedTaskIds.length }})
+                            </el-button>
+                        </div>
+                        <div style="flex: 1; overflow-y: auto;">
+                            <div v-if="tasks.length === 0" class="empty-state">
+                                <el-icon :size="40" style="margin-bottom: 10px;"><Files /></el-icon>
+                                暂无任务，请新建
+                            </div>
+                            <div v-for="task in tasks" :key="task.id" 
+                                 class="task-item" 
+                                 :class="{ active: currentTask && currentTask.id === task.id }"
+                                 style="padding: 12px 15px; border-bottom: 1px solid #ebeef5; cursor: pointer; position: relative;"
+                                 @click="selectTask(task)">
+                                <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 5px;">
+                                    <span style="font-weight: 600; font-size: 14px; color: #303133; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 150px;">{{ task.task_name }}</span>
+                                    <el-tag size="small" :type="getStatusType(task.status)" effect="light">{{ getStatusText(task.status) }}</el-tag>
+                                </div>
+                                
+                                <!-- Progress Bar -->
+                                <div v-if="task.status === 'processing' || task.status === 'completed'" style="margin-bottom: 8px;">
+                                    <div style="display: flex; justify-content: space-between; font-size: 12px; color: #909399; margin-bottom: 2px;">
+                                        <span>进度: {{ task.processed_count || 0 }} / {{ task.total_images || 0 }}</span>
+                                        <span>{{ calculateProgress(task) }}%</span>
+                                    </div>
+                                    <el-progress 
+                                        :percentage="calculateProgress(task)" 
+                                        :status="task.status === 'completed' ? 'success' : ''" 
+                                        :show-text="false" 
+                                        :stroke-width="4">
+                                    </el-progress>
+                                </div>
+
+                                <div style="font-size: 12px; color: #909399; margin-bottom: 5px;">
+                                    <el-icon style="vertical-align: middle; margin-right: 4px;"><Cpu /></el-icon>
+                                    {{ task.model_name }}
+                                </div>
+                                <div style="font-size: 12px; color: #c0c4cc; display: flex; justify-content: space-between; align-items: center;">
+                                    <span>{{ formatTime(task.created_at) }}</span>
+                                    
+                                    <!-- Actions -->
+                                    <div @click.stop>
+                                        <el-popconfirm title="确定删除该任务吗?" @confirm="deleteTask(task)">
+                                            <template #reference>
+                                                <el-button link type="danger" size="small" icon="Delete" style="padding: 0;">删除</el-button>
+                                            </template>
+                                        </el-popconfirm>
+                                        <el-checkbox v-model="task.selected" @change="updateSelectedTasks" size="small" style="margin-left: 8px;"></el-checkbox>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </el-tab-pane>
+                    
+                    <!-- 图片列表 -->
+                    <el-tab-pane label="图片列表" name="images" :disabled="!currentTask">
+                        <div v-if="currentTask" style="padding: 10px; background: #ecf5ff; border-bottom: 1px solid #d9ecff; display: flex; align-items: center;">
+                            <el-button link type="primary" @click="activeTab = 'tasks'" icon="Back">返回</el-button>
+                            <span style="font-weight: bold; margin-left: 10px; font-size: 13px; color: #409EFF; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ currentTask.task_name }}</span>
+                        </div>
+                        <div style="flex: 1; overflow-y: auto;" v-loading="loadingImages">
+                            <div v-if="currentTaskImages.length === 0" class="empty-state">暂无图片</div>
+                            <div v-for="img in currentTaskImages" :key="img.id" 
+                                 class="image-item" :class="{ active: currentImage && currentImage.id === img.id }"
+                                 @click="selectImage(img)">
+                                <div style="display: flex; justify-content: space-between;">
+                                    <span style="font-size: 13px; font-weight: 500; color: #606266;">
+                                        <span class="status-badge" :class="img.detections && img.detections.some(d => d.is_manual) ? 'status-completed' : 'status-processing'"></span>
+                                        {{ img.file_name }}
+                                    </span>
+                                    <el-badge :value="img.detections ? img.detections.length : 0" class="item" type="info" />
+                                </div>
+                            </div>
+                        </div>
+                    </el-tab-pane>
+                </el-tabs>
+            </div>
+            
+            <!-- 中间工作区 -->
+            <div class="workspace-container" ref="workspaceRef">
+                <!-- 工具栏 -->
+                <div class="canvas-toolbar" v-if="currentImage">
+                    <el-tooltip content="适应屏幕 (0)" placement="bottom">
+                        <el-button circle size="small" icon="FullScreen" @click="fitCanvas"></el-button>
+                    </el-tooltip>
+                    <el-tooltip content="拖动模式 (Space)" placement="bottom">
+                        <el-button circle size="small" :type="isDragMode ? 'primary' : ''" icon="Rank" @click="toggleDragMode"></el-button>
+                    </el-tooltip>
+                    <el-divider direction="vertical"></el-divider>
+                    <el-popover placement="bottom" title="操作说明" :width="200" trigger="hover">
+                        <template #reference>
+                            <el-button circle size="small" icon="QuestionFilled"></el-button>
+                        </template>
+                        <div style="font-size: 12px; line-height: 1.8; color: #606266;">
+                            <div><b>🖱️ 缩放/移动:</b></div>
+                            <div>• 滚轮: 缩放画布</div>
+                            <div>• 按住空格 + 左键: 拖动</div>
+                            <div style="margin-top: 5px;"><b>✏️ 标注操作:</b></div>
+                            <div>• Shift + 左键拖拽: 画新框</div>
+                            <div>• 左键点击: 选中框</div>
+                            <div>• Delete: 删除选中框</div>
+                        </div>
+                    </el-popover>
+                    <el-divider direction="vertical"></el-divider>
+                    <el-tooltip content="删除选中框 (Del)" placement="bottom">
+                        <el-button circle size="small" type="danger" icon="Delete" @click="deleteSelected" :disabled="!hasActiveObject"></el-button>
+                    </el-tooltip>
+                </div>
+
+                <div class="workspace-canvas">
+                    <div v-if="!currentImage" class="empty-state">
+                        <el-icon :size="64" color="#dcdfe6"><Picture /></el-icon>
+                        <p style="margin-top: 20px; color: #909399;">请选择图片开始标注</p>
+                    </div>
+                    <div v-show="currentImage" id="canvas-wrapper" style="width: 100%; height: 100%;">
+                        <canvas id="c"></canvas>
+                    </div>
+                    
+                    <div v-if="loadingCanvas" style="position: absolute; inset: 0; background: rgba(255,255,255,0.7); display: flex; justify-content: center; align-items: center; z-index: 100;">
+                        <el-icon class="is-loading" :size="32" color="#409EFF"><Loading /></el-icon>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 右侧属性面板 -->
+            <div class="property-panel">
+                <div style="padding: 15px; border-bottom: 1px solid #ebeef5; font-weight: 600; font-size: 15px; color: #303133;">
+                    <el-icon style="vertical-align: middle; margin-right: 5px;"><Setting /></el-icon>
+                    标注控制
+                </div>
+                
+                <div style="padding: 15px; flex: 1; display: flex; flex-direction: column; overflow: hidden;">
+                    <el-form label-position="top" size="small">
+                        <el-form-item label="视图过滤">
+                            <el-select v-model="filterClass" style="width: 100%;">
+                                <el-option label="全部显示 (ALL)" value="ALL"></el-option>
+                                <el-option v-for="cls in classList" :key="cls.id" :label="cls.name" :value="cls.id">
+                                    <span style="float: left; display: flex; align-items: center;">
+                                        <span :style="{background: getClassColor(cls.id), width: '10px', height: '10px', borderRadius: '50%', marginRight: '8px', display: 'inline-block'}"></span>
+                                        {{ cls.name }}
+                                    </span>
+                                </el-option>
+                            </el-select>
+                        </el-form-item>
+
+                        <el-form-item label="绘制类别 (新框)">
+                            <el-select v-model="currentClass" style="width: 100%;">
+                                <el-option v-for="cls in classList" :key="cls.id" :label="cls.name" :value="cls.id">
+                                    <span style="float: left; display: flex; align-items: center;">
+                                        <span :style="{background: getClassColor(cls.id), width: '10px', height: '10px', borderRadius: '50%', marginRight: '8px', display: 'inline-block'}"></span>
+                                        {{ cls.name }}
+                                    </span>
+                                    <span style="float: right; color: #8492a6; font-size: 13px">{{ cls.id }}</span>
+                                </el-option>
+                            </el-select>
+                        </el-form-item>
+                    </el-form>
+                    
+                    <div style="margin-top: 10px; margin-bottom: 10px; font-size: 13px; font-weight: 600; color: #606266; display: flex; justify-content: space-between;">
+                        <span>检测框列表</span>
+                        <span style="color: #909399;">{{ filteredDetections.length }} / {{ currentDetections.length }}</span>
+                    </div>
+                    
+                    <div style="flex: 1; overflow-y: auto; border: 1px solid #dcdfe6; border-radius: 4px; background: #fafafa;">
+                        <div v-if="filteredDetections.length === 0" style="padding: 20px; text-align: center; color: #909399; font-size: 12px;">
+                            暂无检测框
+                        </div>
+                        <div v-for="(det, index) in filteredDetections" :key="det.id || index" 
+                             class="image-item" 
+                             @click="selectDetectionOnCanvas(det)"
+                             style="padding: 8px 10px; font-size: 12px; display: flex; justify-content: space-between; align-items: center;">
+                            <div style="display: flex; align-items: center;">
+                                <div :style="{width: '8px', height: '8px', borderRadius: '50%', background: getClassColor(det.class_id || 0), marginRight: '8px'}"></div>
+                                <span :style="{fontWeight: det.is_manual ? 'bold' : 'normal'}">{{ det.class_name }}</span>
+                            </div>
+                            <div style="display: flex; align-items: center;">
+                                <span style="color: #909399; margin-right: 10px;">{{ (det.confidence || 0).toFixed(2) }}</span>
+                                <el-icon class="delete-icon" @click.stop="deleteDetection(det)" color="#F56C6C" style="cursor: pointer;"><Close /></el-icon>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div style="margin-top: 15px;">
+                        <el-alert title="修改自动保存" type="success" :closable="false" show-icon>
+                            <template #default>
+                                <div style="font-size: 12px;">所有操作会实时同步到数据库</div>
+                            </template>
+                        </el-alert>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 新建任务弹窗 -->
+        <el-dialog v-model="showNewTaskDialog" width="600px" destroy-on-close>
+            <template #header>
+                <div style="display: flex; align-items: center;">
+                    <span class="el-dialog__title">新建推理任务</span>
+                    <div style="margin-left: 15px; font-size: 12px; display: flex; align-items: center; background: #f4f4f5; padding: 2px 8px; border-radius: 12px;">
+                        <span v-if="systemStatus.cuda_available" style="color: #67C23A; font-weight: bold;">
+                            <el-icon style="vertical-align: -1px; margin-right: 2px;"><Cpu /></el-icon> GPU Ready
+                        </span>
+                        <span v-else style="color: #E6A23C; font-weight: bold;">
+                            <el-icon style="vertical-align: -1px; margin-right: 2px;"><WarnTriangleFilled /></el-icon> CPU Mode
+                        </span>
+                    </div>
+                </div>
+            </template>
+            <el-form :model="newTaskForm" label-width="120px" ref="taskFormRef" size="default">
+                
+                <el-form-item label="模型权重" required>
+                    <el-select v-model="newTaskForm.model_path" placeholder="请选择 YOLO 模型" style="width: 100%" filterable>
+                        <el-option v-for="model in availableModels" :key="model.path" :label="model.name" :value="model.path">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <span>{{ model.name }}</span>
+                                <span style="color: #909399; font-size: 12px;">{{ model.size_mb }}MB</span>
+                            </div>
+                        </el-option>
+                    </el-select>
+                    <div style="margin-top: 5px; text-align: right;">
+                        <el-button @click="pickFile('model')" icon="FolderOpened" size="small">选择本地模型文件</el-button>
+                    </div>
+                </el-form-item>
+
+                <el-form-item label="数据来源" required>
+                    <div style="width: 100%;">
+                         <div style="margin-bottom: 10px; display: flex; gap: 10px;">
+                             <el-button @click="pickFilesAppend" icon="DocumentAdd" type="primary" plain>添加文件</el-button>
+                             <el-button @click="pickFolderAppend" icon="FolderAdd">添加文件夹(扫描)</el-button>
+                             <el-button @click="clearFileList" icon="Delete" type="danger" plain :disabled="newTaskForm_fileList.length === 0">清空</el-button>
+                         </div>
+                         
+                         <div style="border: 1px solid #dcdfe6; border-radius: 4px; height: 180px; overflow-y: auto; padding: 5px; background: #fff;">
+                             <div v-if="newTaskForm_fileList.length === 0" style="text-align: center; color: #909399; padding-top: 70px;">
+                                 请点击上方按钮添加图片文件
+                             </div>
+                             <div v-for="(file, index) in newTaskForm_fileList" :key="index" style="display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; border-bottom: 1px solid #f2f6fc; font-size: 13px; transition: background 0.2s;" onmouseover="this.style.background='#f5f7fa'" onmouseout="this.style.background='transparent'">
+                                 <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-right: 10px; flex: 1;" :title="file">
+                                     <el-icon style="vertical-align: -2px; margin-right: 5px; color: #909399;"><Picture /></el-icon>
+                                     {{ file }}
+                                 </div>
+                                 <el-button link type="danger" icon="Close" @click="removeFileFromList(index)" style="padding: 0;"></el-button>
+                             </div>
+                         </div>
+                         <div style="margin-top: 5px;">
+                            <el-button v-if="newTaskForm_fileList.length > 0" type="warning" plain size="small" icon="Crop" @click="openCorrection">手动透视校正</el-button>
+                         </div>
+                    </div>
+                </el-form-item>
+
+                <el-collapse v-model="activeCollapse" style="border: none;">
+                    <el-collapse-item title="高级参数设置 (SAHI & NMS)" name="1">
+                        <div class="param-group-title">切片参数 (SAHI)</div>
+                        <el-row :gutter="20">
+                            <el-col :span="12">
+                                <el-form-item label="切片大小">
+                                    <el-input-number v-model="newTaskForm.slice_height" :min="320" :max="2048" :step="32" style="width: 100%;"></el-input-number>
+                                </el-form-item>
+                            </el-col>
+                            <el-col :span="12">
+                                <el-form-item label="重叠率">
+                                    <el-input-number v-model="newTaskForm.overlap_height_ratio" :min="0" :max="0.5" :step="0.05" :precision="2" style="width: 100%;"></el-input-number>
+                                </el-form-item>
+                            </el-col>
+                        </el-row>
+
+                        <div class="param-group-title">推理过滤</div>
+                        <el-row :gutter="20">
+                            <el-col :span="12">
+                                <el-form-item label="置信度">
+                                    <el-input-number v-model="newTaskForm.conf_thres" :min="0.01" :max="0.95" :step="0.05" :precision="2" style="width: 100%;"></el-input-number>
+                                </el-form-item>
+                            </el-col>
+                            <el-col :span="12">
+                                <el-form-item label="设备">
+                                    <el-input v-model="newTaskForm.device" placeholder="cuda:0 or cpu"></el-input>
+                                </el-form-item>
+                            </el-col>
+                        </el-row>
+
+                        <div class="param-group-title">后处理 (NMS)</div>
+                        <el-row :gutter="20">
+                            <el-col :span="12">
+                                <el-form-item label="NMS 阈值">
+                                    <el-input-number v-model="newTaskForm.postprocess_threshold" :min="0.1" :max="1.0" :step="0.1" :precision="2" style="width: 100%;"></el-input-number>
+                                </el-form-item>
+                            </el-col>
+                            <el-col :span="12">
+                                <el-form-item label="匹配指标">
+                                    <el-select v-model="newTaskForm.postprocess_metric" style="width: 100%;">
+                                        <el-option label="IOS (交并比)" value="IOS"></el-option>
+                                        <el-option label="IOU (交集比)" value="IOU"></el-option>
+                                    </el-select>
+                                </el-form-item>
+                            </el-col>
+                        </el-row>
+
+                        <el-row :gutter="20">
+                            <el-col :span="12">
+                                <el-form-item label="最小面积">
+                                    <el-input-number v-model="newTaskForm.min_box_area" :min="0" :step="10" style="width: 100%;"></el-input-number>
+                                </el-form-item>
+                            </el-col>
+                            <el-col :span="12">
+                                <el-form-item label="最大数量">
+                                    <el-input-number v-model="newTaskForm.max_detections" :min="1" :step="100" style="width: 100%;"></el-input-number>
+                                </el-form-item>
+                            </el-col>
+                        </el-row>
+
+                        <el-form-item label="跨类别 NMS">
+                            <el-switch v-model="newTaskForm.cross_class_nms_enabled" active-text="启用" inactive-text="禁用"></el-switch>
+                            <div style="font-size: 12px; color: #909399;">启用后将合并不同类别的重叠框</div>
+                        </el-form-item>
+                    </el-collapse-item>
+                </el-collapse>
+
+            </el-form>
+            <template #footer>
+                <el-button @click="showNewTaskDialog = false">取消</el-button>
+                <el-button type="primary" @click="submitNewTask" :loading="creatingTask">开始推理</el-button>
+            </template>
+        </el-dialog>
+
+        <!-- 导出弹窗 -->
+        <el-dialog v-model="showExportDialog" title="导出数据集" width="500px">
+            <el-form :model="exportForm" label-width="100px">
+                <el-form-item label="导出路径" required>
+                    <el-input v-model="exportForm.output_dir" placeholder="请选择导出文件夹" readonly>
+                        <template #append>
+                            <el-button @click="pickFolder('export')" icon="FolderOpened">选择</el-button>
+                        </template>
+                    </el-input>
+                </el-form-item>
+                <el-form-item label="版本标签">
+                    <el-input v-model="exportForm.version_tag" placeholder="例如: v1.0"></el-input>
+                </el-form-item>
+                
+                <el-form-item label="训练集比例">
+                    <div style="display: flex; flex-direction: column; gap: 10px; width: 100%;">
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <el-slider v-model="exportForm.split_ratio" :min="0" :max="1" :step="0.05" show-input style="flex: 1;"></el-slider>
+                            <span style="font-size: 12px; color: #909399; width: 80px;">
+                                {{ (exportForm.split_ratio * 100).toFixed(0) }}% 训练
+                            </span>
+                        </div>
+                        <el-radio-group v-model="exportForm.split_ratio" size="small">
+                            <el-radio-button :label="0.8">8:2</el-radio-button>
+                            <el-radio-button :label="0.9">9:1</el-radio-button>
+                            <el-radio-button :label="1.0">10:0 (全训练)</el-radio-button>
+                        </el-radio-group>
+                    </div>
+                </el-form-item>
+                
+                <el-form-item label="重命名文件">
+                    <el-switch v-model="exportForm.rename_files" active-text="添加任务ID前缀 (避免冲突)"></el-switch>
+                    <div v-if="selectedTasksList.length > 1" style="font-size: 12px; color: #e6a23c; margin-top: 5px;">
+                        <el-icon><Warning /></el-icon> 检测到多任务导出，建议开启重命名以防止文件名冲突
+                    </div>
+                </el-form-item>
+
+                <el-form-item label="包含任务">
+                    <div style="max-height: 150px; overflow-y: auto; border: 1px solid #dcdfe6; padding: 10px; border-radius: 4px; background: #fafafa;">
+                        <div v-for="task in selectedTasksList" :key="task.id" style="margin-bottom: 5px; font-size: 13px; color: #606266;">
+                            <el-icon style="margin-right: 5px;"><Check /></el-icon>
+                            {{ task.task_name }}
+                        </div>
+                    </div>
+                </el-form-item>
+            </el-form>
+            <template #footer>
+                <el-button @click="showExportDialog = false">取消</el-button>
+                <el-button type="primary" @click="submitExport" :loading="exporting">确认导出</el-button>
+            </template>
+        </el-dialog>
+        <!-- 校正弹窗 -->
+        <el-dialog v-model="showCorrectionDialog" fullscreen custom-class="correction-dialog" :show-close="false">
+            <template #header="{ close, titleId, titleClass }">
+                <div class="correction-header">
+                    <div style="display: flex; align-items: center; gap: 16px;">
+                        <el-button @click="closeCorrection" circle icon="ArrowLeft" size="default" style="border: none; background: transparent; font-size: 18px;"></el-button>
+                        <div style="height: 24px; width: 1px; background: #dcdfe6;"></div>
+                        <div>
+                            <div style="font-size: 18px; font-weight: 600; color: #303133;">图像透视校正</div>
+                        </div>
+                        <el-tag effect="plain" type="info" round size="default" style="margin-left: 8px; font-family: monospace;">
+                            {{ currentCorrectionIndex + 1 }} / {{ correctionImageList.length }}
+                        </el-tag>
+                    </div>
+                    
+                    <div style="display: flex; gap: 12px; align-items: center;">
+                        <el-button-group style="box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                            <el-button @click="prevCorrectionImage" :disabled="currentCorrectionIndex === 0" size="default" icon="ArrowLeft">上一张</el-button>
+                            <el-button @click="nextCorrectionImage" :disabled="currentCorrectionIndex === correctionImageList.length - 1" size="default">
+                                下一张 <el-icon class="el-icon--right"><ArrowRight /></el-icon>
+                            </el-button>
+                        </el-button-group>
+                        
+                        <el-button type="primary" @click="submitCorrection(true)" :disabled="correctionPoints.length !== 4" :loading="correcting" size="default" style="padding: 0 24px; box-shadow: 0 4px 12px rgba(64, 158, 255, 0.3);">
+                            应用并下一张
+                        </el-button>
+                        
+                        <el-button type="primary" plain @click="submitCorrection(false)" :disabled="correctionPoints.length !== 4" :loading="correcting" size="default" icon="View">
+                            应用
+                        </el-button>
+                    </div>
+                </div>
+            </template>
+            
+            <div class="correction-canvas-container" ref="correctionContainer">
+                <div class="correction-toolbar">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <el-icon color="#409EFF" :size="18"><InfoFilled /></el-icon>
+                        <span style="color: #606266;">请点击图片 <span style="color: #303133; font-weight: bold;">4</span> 个角</span>
+                    </div>
+                    <el-divider direction="vertical" style="height: 16px; margin: 0;"></el-divider>
+                    <el-button size="small" type="primary" link @click="clearCorrectionPoints" icon="RefreshLeft">重置选点</el-button>
+                </div>
+                <canvas id="correction-canvas"></canvas>
+            </div>
+        </el-dialog>
+
+    </div>
+
+    <script>
+        const { createApp, ref, reactive, computed, onMounted, nextTick, watch } = Vue;
+        const { ElMessage, ElMessageBox, ElLoading } = ElementPlus;
+
+        const API_BASE = '/api';
+
+        // 预设颜色表 (20种高对比度颜色)
+        const DISTINCT_COLORS = [
+            '#e6194b', '#3cb44b', '#ffe119', '#4363d8', '#f58231', 
+            '#911eb4', '#46f0f0', '#f032e6', '#bcf60c', '#fabebe', 
+            '#008080', '#e6beff', '#9a6324', '#fffac8', '#800000', 
+            '#aaffc3', '#808000', '#ffd8b1', '#000075', '#808080'
+        ];
+
+        const getClassColor = (clsId) => {
+            const idx = Math.abs(clsId) % DISTINCT_COLORS.length;
+            return DISTINCT_COLORS[idx];
+        };
+
+        const App = {
+            setup() {
+                // UI State
+                const activeTab = ref('tasks');
+                const showNewTaskDialog = ref(false);
+                const showExportDialog = ref(false);
+                const showCorrectionDialog = ref(false);
+                const activeCollapse = ref([]); // 默认不展开高级选项
+                const loadingImages = ref(false);
+                const loadingCanvas = ref(false);
+                const creatingTask = ref(false);
+                const exporting = ref(false);
+                const correcting = ref(false);
+                
+                // Correction
+                const correctionPoints = ref([]);
+                const correctionImage = ref(null);
+                let correctionCanvas = null;
+                let correctionImageObj = null; // Fabric Image Object
+                const correctionImageList = ref([]);
+                const currentCorrectionIndex = ref(0);
+                
+                const hasActiveObject = ref(false);
+                const isDragMode = ref(false);
+                const isSpacePressed = ref(false);
+                const systemStatus = ref({ cuda_available: false, device_name: 'Checking...' });
+
+                // Data
+                const tasks = ref([]);
+                const currentTask = ref(null);
+                const currentTaskImages = ref([]);
+                const currentImage = ref(null);
+                const availableModels = ref([]);
+                const currentClass = ref(0);
+                const filterClass = ref('ALL'); // 视图过滤状态
+                const classList = ref([{ id: 0, name: 'object' }]); 
+
+                // Load saved preferences
+                const savedModelPath = localStorage.getItem('last_model_path');
+                const savedSettings = JSON.parse(localStorage.getItem('last_task_settings') || '{}');
+
+                // 校验并清洗脏数据 (例如 folder 模式下存了文件列表)
+                if (savedSettings.source_type === 'folder' && savedSettings.source_path && savedSettings.source_path.includes(',')) {
+                    console.warn('Detected invalid folder path in storage, resetting...');
+                    savedSettings.source_path = '';
+                }
+
+                // Forms
+                const newTaskForm = reactive({
+                    source_type: 'list', // Always list
+                    source_path: '',
+                    model_path: savedModelPath || '',
+                    
+                    // Advanced Params
+                    slice_height: savedSettings.slice_height || 640,
+                    overlap_height_ratio: savedSettings.overlap_height_ratio || 0.15,
+                    conf_thres: savedSettings.conf_thres || 0.3,
+                    device: savedSettings.device || 'cuda:0',
+                    
+                    postprocess_type: savedSettings.postprocess_type || 'NMS',
+                    postprocess_threshold: savedSettings.postprocess_threshold || 0.6,
+                    postprocess_metric: savedSettings.postprocess_metric || 'IOS',
+                    
+                    min_box_area: savedSettings.min_box_area || 200,
+                    max_detections: savedSettings.max_detections || 50000,
+                    
+                    cross_class_nms_enabled: savedSettings.cross_class_nms_enabled !== undefined ? savedSettings.cross_class_nms_enabled : true
+                });
+
+                const newTaskForm_fileList = ref([]);
+
+                // 监听文件列表变化，同步到 source_path
+                watch(newTaskForm_fileList, (newVal) => {
+                    newTaskForm.source_path = newVal.join(',');
+                }, { deep: true });
+
+                const exportForm = reactive({
+                    output_dir: '',
+                    version_tag: 'v1.0',
+                    split_ratio: 0.8,
+                    rename_files: true
+                });
+
+                // Canvas
+                const workspaceRef = ref(null);
+                let canvas = null;
+                const objectMap = new Map();
+
+                // Correction Logic
+                const openCorrection = async () => {
+                    // 支持 List 和 Folder (自动转换)
+                    // 目前已统一为 list 模式
+                    if (newTaskForm.source_path) {
+                        correctionImageList.value = newTaskForm.source_path.split(',').map(p => p.trim()).filter(p => p);
+                    } else {
+                        ElMessage.warning('请先选择图片');
+                        return;
+                    }
+                    
+                    if (correctionImageList.value.length === 0) return;
+                    
+                    currentCorrectionIndex.value = 0;
+                    correctionPoints.value = [];
+                    showCorrectionDialog.value = true;
+                    
+                    nextTick(() => {
+                        initCorrectionCanvas(correctionImageList.value[0]);
+                    });
+                };
+                
+                const initCorrectionCanvas = (imgPath) => {
+                    const wrapper = document.querySelector('.correction-canvas-container');
+                    const canvasEl = document.getElementById('correction-canvas');
+                    
+                    if (correctionCanvas) {
+                        correctionCanvas.dispose();
+                    }
+                    
+                    correctionCanvas = new fabric.Canvas('correction-canvas', {
+                        width: wrapper.clientWidth,
+                        height: wrapper.clientHeight,
+                        selection: false,
+                        backgroundColor: 'transparent' // 透明背景，使用 CSS 控制容器背景
+                    });
+                    
+                    // 加载图片
+                    const imageUrl = API_BASE + '/file/' + encodeURIComponent(imgPath);
+                    fabric.Image.fromURL(imageUrl, (img) => {
+                        if (!img) {
+                            ElMessage.error('无法加载图片');
+                            return;
+                        }
+                        
+                        correctionImageObj = img;
+                        
+                        // 适应屏幕
+                        const scale = Math.min(
+                            (correctionCanvas.width - 80) / img.width,
+                            (correctionCanvas.height - 80) / img.height
+                        );
+                        
+                        img.scale(scale);
+                        correctionCanvas.centerObject(img);
+                        
+                        // 添加图片阴影，使其更有立体感
+                        img.set({
+                            shadow: new fabric.Shadow({
+                                color: 'rgba(0,0,0,0.3)',
+                                blur: 20,
+                                offsetX: 0,
+                                offsetY: 10
+                            })
+                        });
+                        
+                        correctionCanvas.add(img);
+                        img.selectable = false;
+                        img.evented = false; // 让点击穿透到 Canvas
+                        
+                        correctionCanvas.requestRenderAll();
+                    });
+                    
+                    // 绑定点击事件
+                    correctionCanvas.on('mouse:down', (opt) => {
+                        if (correctionPoints.value.length >= 4) return;
+                        
+                        const pointer = correctionCanvas.getPointer(opt.e);
+                        const x = pointer.x;
+                        const y = pointer.y;
+                        
+                        // 转换为原图坐标
+                        const img = correctionImageObj;
+                        if (!img) return;
+                        
+                        // Fabric.js 坐标转换: Canvas -> Image Local -> Original Pixel
+                        // 1. 获取图片变换矩阵的逆矩阵
+                        // const invMatrix = fabric.util.invertTransform(img.calcTransformMatrix());
+                        // 2. 应用变换
+                        // const pointInImg = fabric.util.transformPoint(new fabric.Point(x, y), invMatrix);
+                        
+                        // 简化逻辑：直接利用缩放比例反推
+                        // 前提：我们只做了 uniform scaling (img.scale(scale))，没有旋转和平移
+                        const imgRect = img.getBoundingRect(); // 获取图片在 Canvas 上的实际显示区域
+                        
+                        // 相对于图片左上角的坐标
+                        const relX = x - imgRect.left;
+                        const relY = y - imgRect.top;
+                        
+                        // 映射回原图
+                        const scaleX = img.width / imgRect.width;
+                        const scaleY = img.height / imgRect.height;
+                        
+                        let trueX = relX * scaleX;
+                        let trueY = relY * scaleY;
+                        
+                        // 边界保护
+                        trueX = Math.max(0, Math.min(trueX, img.width));
+                        trueY = Math.max(0, Math.min(trueY, img.height));
+                        
+                        correctionPoints.value.push([trueX, trueY]);
+                        
+                        // 绘制标记点 (在 Canvas 坐标系)
+                        const circle = new fabric.Circle({
+                            left: x,
+                            top: y,
+                            radius: 5,
+                            fill: 'red',
+                            stroke: 'white',
+                            strokeWidth: 2,
+                            originX: 'center',
+                            originY: 'center',
+                            selectable: false
+                        });
+                        
+                        // 绘制文字序号
+                        const text = new fabric.Text(String(correctionPoints.value.length), {
+                            left: x + 10,
+                            top: y - 10,
+                            fontSize: 16,
+                            fill: 'red',
+                            stroke: 'white',
+                            strokeWidth: 0.5,
+                            selectable: false
+                        });
+                        
+                        correctionCanvas.add(circle);
+                        correctionCanvas.add(text);
+                        
+                        // 如果有 2 个以上点，画线
+                        if (correctionPoints.value.length > 1) {
+                            // 获取上一个点的 Canvas 坐标
+                            // 这里简单重绘吧，或者记录上一个 Canvas 坐标
+                            // ... 略简化
+                        }
+                    });
+                };
+                
+                const clearCorrectionPoints = () => {
+                    correctionPoints.value = [];
+                    // 移除除了图片以外的所有对象
+                    const objects = correctionCanvas.getObjects();
+                    objects.forEach(obj => {
+                        if (obj !== correctionImageObj) {
+                            correctionCanvas.remove(obj);
+                        }
+                    });
+                };
+                
+                const closeCorrection = () => {
+                    showCorrectionDialog.value = false;
+                    if (correctionCanvas) {
+                        correctionCanvas.dispose();
+                        correctionCanvas = null;
+                    }
+                };
+                
+                const nextCorrectionImage = () => {
+                    if (currentCorrectionIndex.value < correctionImageList.value.length - 1) {
+                        currentCorrectionIndex.value++;
+                        correctionPoints.value = [];
+                        initCorrectionCanvas(correctionImageList.value[currentCorrectionIndex.value]);
+                    } else {
+                        ElMessage.success('已到达最后一张图片');
+                    }
+                };
+
+                const prevCorrectionImage = () => {
+                    if (currentCorrectionIndex.value > 0) {
+                        currentCorrectionIndex.value--;
+                        correctionPoints.value = [];
+                        initCorrectionCanvas(correctionImageList.value[currentCorrectionIndex.value]);
+                    }
+                };
+
+                const submitCorrection = async (moveToNext = true) => {
+                    if (correctionPoints.value.length !== 4) return;
+                    
+                    correcting.value = true;
+                    try {
+                        const imgPath = correctionImageList.value[currentCorrectionIndex.value];
+                        
+                        const res = await axios.post(API_BASE + '/images/correct-perspective', {
+                            image_path: imgPath,
+                            points: correctionPoints.value
+                        });
+                        
+                        if (res.data.success) {
+                            ElMessage.success('校正成功');
+                            // 更新列表中的路径
+                            const newPath = res.data.new_path;
+                            correctionImageList.value[currentCorrectionIndex.value] = newPath;
+                            
+                            // 更新表单
+                            newTaskForm.source_path = correctionImageList.value.join(',');
+                            
+                            if (moveToNext) {
+                                // 自动跳转下一张
+                                if (currentCorrectionIndex.value < correctionImageList.value.length - 1) {
+                                    nextCorrectionImage();
+                                } else {
+                                    ElMessage.success('所有图片校正完成');
+                                    closeCorrection();
+                                }
+                            } else {
+                                // 留在当前页，显示校正后的效果
+                                correctionPoints.value = []; // 清空选点
+                                initCorrectionCanvas(newPath); // 重新加载新图片
+                            }
+                        }
+                    } catch (e) {
+                        ElMessage.error('校正失败: ' + (e.response?.data?.detail || e.message));
+                    } finally {
+                        correcting.value = false;
+                    }
+                };
+                const selectedTaskIds = computed(() => tasks.value.filter(t => t.selected).map(t => t.id));
+                const selectedTasksList = computed(() => tasks.value.filter(t => t.selected));
+                const currentDetections = computed(() => {
+                    if (!currentImage.value || !currentImage.value.detections) return [];
+                    return currentImage.value.detections;
+                });
+
+                const filteredDetections = computed(() => {
+                    const all = currentDetections.value;
+                    if (filterClass.value === 'ALL') return all;
+                    return all.filter(d => d.class_id === filterClass.value);
+                });
+
+                watch(filterClass, () => {
+                    if (canvas && currentImage.value) {
+                        const objects = canvas.getObjects().filter(o => o.type === 'rect' && o.data);
+                        canvas.remove(...objects);
+                        objectMap.clear();
+                        drawDetections(filteredDetections.value, currentImage.value.width, currentImage.value.height);
+                    }
+                });
+
+                // 监听选中任务变化，如果是多任务，自动建议或开启重命名
+                watch(selectedTasksList, (newVal) => {
+                    if (newVal.length > 1) {
+                        exportForm.rename_files = true;
+                    }
+                });
+
+                // Methods
+                const fetchSystemStatus = async () => {
+                    try {
+                        const res = await axios.get(API_BASE + '/system/status');
+                        systemStatus.value = res.data;
+                    } catch (e) {
+                        console.error('Failed to get system status', e);
+                    }
+                };
+
+                const fetchModels = async () => {
+                    try {
+                        const res = await axios.get(API_BASE + '/models');
+                        availableModels.value = res.data;
+                        if (res.data.length > 0 && !newTaskForm.model_path) {
+                            newTaskForm.model_path = res.data[0].path;
+                        }
+                    } catch (e) {
+                        console.error('Failed to load models', e);
+                    }
+                };
+
+                const fetchTasks = async () => {
+                    try {
+                        const res = await axios.get(API_BASE + '/tasks');
+                        // Preserve selection state if possible
+                        const oldSelection = new Set(tasks.value.filter(t => t.selected).map(t => t.id));
+                        tasks.value = res.data.map(t => ({ 
+                            ...t, 
+                            selected: oldSelection.has(t.id) 
+                        }));
+                    } catch (e) {
+                        console.error('Failed to load tasks', e);
+                    }
+                };
+
+                const selectTask = async (task) => {
+                    currentTask.value = task;
+                    activeTab.value = 'images';
+                    
+                    // 更新类别列表
+                    if (task.classes && task.classes.length > 0) {
+                        classList.value = task.classes;
+                        currentClass.value = task.classes[0].id;
+                    } else {
+                        classList.value = [{ id: 0, name: 'object' }];
+                        currentClass.value = 0;
+                    }
+
+                    loadingImages.value = true;
+                    try {
+                        const res = await axios.get(API_BASE + '/tasks/' + task.id);
+                        currentTaskImages.value = res.data.images || [];
+                    } catch (e) {
+                        ElMessage.error('无法加载任务详情');
+                    } finally {
+                        loadingImages.value = false;
+                    }
+                };
+
+                const submitNewTask = async () => {
+                    // 前端校验：防止 folder 模式下提交了文件列表
+                    if (newTaskForm.source_type === 'folder' && newTaskForm.source_path.includes(',')) {
+                        ElMessage.error('检测到路径格式错误：您选择的是"文件夹"模式，但路径看起来像是多个文件。请重新点击"选择文件夹"按钮，或切换到"多张图片"模式。');
+                        return;
+                    }
+
+                    if (!newTaskForm.source_path || !newTaskForm.model_path) {
+                        ElMessage.warning('请填写完整路径和选择模型');
+                        return;
+                    }
+                    
+                    // Save preference
+                    localStorage.setItem('last_model_path', newTaskForm.model_path);
+                    localStorage.setItem('last_task_settings', JSON.stringify({
+                        source_type: newTaskForm.source_type,
+                        source_path: newTaskForm.source_path,
+                        slice_height: newTaskForm.slice_height,
+                        overlap_height_ratio: newTaskForm.overlap_height_ratio,
+                        conf_thres: newTaskForm.conf_thres,
+                        device: newTaskForm.device,
+                        postprocess_type: newTaskForm.postprocess_type,
+                        postprocess_threshold: newTaskForm.postprocess_threshold,
+                        postprocess_metric: newTaskForm.postprocess_metric,
+                        min_box_area: newTaskForm.min_box_area,
+                        max_detections: newTaskForm.max_detections,
+                        cross_class_nms_enabled: newTaskForm.cross_class_nms_enabled
+                    }));
+
+                    creatingTask.value = true;
+                    try {
+                        // 构建请求体
+                        const payload = {
+                            ...newTaskForm,
+                            slice_width: newTaskForm.slice_height, // Square slice for now
+                            overlap_width_ratio: newTaskForm.overlap_height_ratio,
+                            cross_class_nms_threshold: 0.5 // Default
+                        };
+
+                        await axios.post(API_BASE + '/tasks/', payload);
+                        ElMessage.success('任务已创建，正在后台进行推理...');
+                        showNewTaskDialog.value = false;
+                        fetchTasks();
+                    } catch (e) {
+                        ElMessage.error('创建失败: ' + (e.response?.data?.detail || e.message));
+                    } finally {
+                        creatingTask.value = false;
+                    }
+                };
+
+                const submitExport = async () => {
+                    if (!exportForm.output_dir) {
+                        ElMessage.warning('请填写导出路径');
+                        return;
+                    }
+                    exporting.value = true;
+                    try {
+                        const res = await axios.post(API_BASE + '/export/dataset', {
+                            task_ids: selectedTaskIds.value,
+                            output_dir: exportForm.output_dir,
+                            version_tag: exportForm.version_tag,
+                            split_ratio: exportForm.split_ratio,
+                            rename_files: exportForm.rename_files
+                        });
+                        ElMessage.success(`导出成功！共 ${res.data.total_images} 张图片`);
+                        showExportDialog.value = false;
+                    } catch (e) {
+                        ElMessage.error('导出失败: ' + (e.response?.data?.detail || e.message));
+                    } finally {
+                        exporting.value = false;
+                    }
+                };
+                
+                // System Picker Methods
+                const pickFolder = async (target = 'source') => {
+                    try {
+                        const res = await axios.get(API_BASE + '/system/pick-folder');
+                        if (res.data.path) {
+                            if (target === 'source') {
+                                newTaskForm.source_path = res.data.path;
+                            } else if (target === 'export') {
+                                exportForm.output_dir = res.data.path;
+                            }
+                        }
+                    } catch (e) {
+                        ElMessage.error('无法调用系统文件选择器');
+                    }
+                };
+
+                const pickFilesAppend = async () => {
+                    try {
+                        const res = await axios.get(API_BASE + '/system/pick-files');
+                        if (res.data.paths && res.data.paths.length > 0) {
+                            const currentSet = new Set(newTaskForm_fileList.value);
+                            let addedCount = 0;
+                            res.data.paths.forEach(p => {
+                                if (p && !currentSet.has(p)) {
+                                    newTaskForm_fileList.value.push(p);
+                                    addedCount++;
+                                }
+                            });
+                            if (addedCount > 0) ElMessage.success(`已追加 ${addedCount} 个文件`);
+                        }
+                    } catch (e) {
+                        console.error(e);
+                        ElMessage.error('选择文件失败: ' + (e.response?.data?.detail || e.message));
+                    }
+                };
+
+                const scanAndAppend = async (path) => {
+                    const loading = ElLoading.service({ text: '正在扫描文件夹...' });
+                    try {
+                        const scanRes = await axios.post(API_BASE + '/system/scan-folder', { path });
+                        loading.close();
+                        
+                        if (scanRes.data.paths && scanRes.data.paths.length > 0) {
+                            const currentSet = new Set(newTaskForm_fileList.value);
+                            let addedCount = 0;
+                            scanRes.data.paths.forEach(p => {
+                                if (p && !currentSet.has(p)) {
+                                    newTaskForm_fileList.value.push(p);
+                                    addedCount++;
+                                }
+                            });
+                            if (addedCount > 0) {
+                                ElMessage.success(`已追加 ${addedCount} 个文件 (来自 ${path})`);
+                            } else {
+                                ElMessage.info('文件夹中的图片已全部在列表中');
+                            }
+                        } else {
+                            ElMessage.warning('该文件夹下没有找到图片');
+                        }
+                    } catch (scanErr) {
+                        loading.close();
+                        ElMessage.error('扫描文件夹失败: ' + (scanErr.response?.data?.detail || scanErr.message));
+                    }
+                };
+
+                const pickFolderAppend = async () => {
+                    try {
+                        const res = await axios.get(API_BASE + '/system/pick-folder');
+                        if (res.data.path) {
+                            await scanAndAppend(res.data.path);
+                        }
+                    } catch (e) {
+                        console.error(e);
+                        ElMessage.error('选择文件夹失败: ' + (e.response?.data?.detail || e.message));
+                    }
+                };
+                
+                const removeFileFromList = (index) => {
+                    newTaskForm_fileList.value.splice(index, 1);
+                };
+                
+                const clearFileList = () => {
+                    newTaskForm_fileList.value = [];
+                };
+
+                const pickFile = async (target = 'source') => {
+                    try {
+                        const res = await axios.get(API_BASE + '/system/pick-file');
+                        if (res.data.path) {
+                            if (target === 'source') {
+                                newTaskForm.source_path = res.data.path;
+                            } else if (target === 'model') {
+                                // Add to list if not exists
+                                const exists = availableModels.value.some(m => m.path === res.data.path);
+                                if (!exists) {
+                                    // 临时添加一个记录，虽然可能不准确
+                                    availableModels.value.push({
+                                        path: res.data.path,
+                                        name: res.data.path.split('\\').pop(),
+                                        size_mb: '?',
+                                        modified_time: new Date().toISOString()
+                                    });
+                                }
+                                newTaskForm.model_path = res.data.path;
+                            }
+                        }
+                    } catch (e) {
+                        ElMessage.error('无法调用系统文件选择器');
+                    }
+                };
+
+                const pickFiles = async () => {
+                    try {
+                        const res = await axios.get(API_BASE + '/system/pick-files');
+                        if (res.data.paths && res.data.paths.length > 0) {
+                            // Append or replace? Let's replace for clarity or append if needed
+                            // Here we replace with comma joined string
+                            newTaskForm.source_path = res.data.paths.join(',');
+                        }
+                    } catch (e) {
+                        ElMessage.error('无法调用系统文件选择器');
+                    }
+                };
+
+                // Canvas Logic
+                const initCanvas = () => {
+                    nextTick(() => {
+                        const wrapper = document.getElementById('canvas-wrapper');
+                        if (!wrapper) return;
+                        
+                        // 禁用右键菜单 (防止触发浏览器菜单)
+                        wrapper.addEventListener('contextmenu', (e) => e.preventDefault());
+                        
+                        canvas = new fabric.Canvas('c', {
+                            width: wrapper.clientWidth,
+                            height: wrapper.clientHeight,
+                            backgroundColor: '#e0e0e0',
+                            selection: true,
+                            fireRightClick: true,
+                            stopContextMenu: true,
+                            uniformScaling: false
+                        });
+
+                        // 监听选中状态
+                        canvas.on('selection:created', () => { hasActiveObject.value = true; });
+                        canvas.on('selection:cleared', () => { hasActiveObject.value = false; });
+                        canvas.on('selection:updated', () => { hasActiveObject.value = true; });
+                        
+                        // 监听对象修改 (移动/缩放结束)
+                        canvas.on('object:modified', function(e) {
+                            if (e.target) {
+                                updateDetectionFromCanvas(e.target);
+                            }
+                        });
+
+                        // 滚轮缩放
+                        canvas.on('mouse:wheel', function(opt) {
+                            var delta = opt.e.deltaY;
+                            var zoom = canvas.getZoom();
+                            zoom *= 0.999 ** delta;
+                            if (zoom > 20) zoom = 20;
+                            if (zoom < 0.1) zoom = 0.1;
+                            canvas.zoomToPoint({ x: opt.e.offsetX, y: opt.e.offsetY }, zoom);
+                            opt.e.preventDefault();
+                            opt.e.stopPropagation();
+                        });
+
+                        // 状态变量
+                        let isDragging = false;
+                        let isDrawing = false;
+                        let startX = 0;
+                        let startY = 0;
+                        let lastPosX = 0;
+                        let lastPosY = 0;
+                        let tempRect = null;
+
+                        // 监听鼠标按下 (修改逻辑，优先处理删除按钮点击)
+                        canvas.on('mouse:down', function(opt) {
+                            // 如果处于拖动模式或按下空格键，优先处理拖拽，忽略对象选中
+                            if (isDragMode.value || isSpacePressed.value || opt.e.button === 2 || opt.e.altKey) {
+                                isDragging = true;
+                                canvas.selection = false;
+                                lastPosX = opt.e.clientX;
+                                lastPosY = opt.e.clientY;
+                                canvas.defaultCursor = 'grabbing';
+                                opt.e.preventDefault();
+                                opt.e.stopPropagation();
+                                return;
+                            }
+
+                            // 如果点击的是对象，不需要做额外处理，Fabric 会自动处理选中
+                            if (opt.target) return;
+                            
+                            // 左键画框模式 (按住 Shift 键)
+                            if (opt.e.shiftKey) {
+                                isDrawing = true;
+                                canvas.selection = false; // 禁用框选
+                                const pointer = canvas.getPointer(opt.e);
+                                startX = pointer.x;
+                                startY = pointer.y;
+                                
+                                tempRect = new fabric.Rect({
+                                    left: startX,
+                                    top: startY,
+                                    width: 0,
+                                    height: 0,
+                                    fill: 'rgba(64, 158, 255, 0.3)',
+                                    stroke: '#409EFF',
+                                    strokeWidth: 2 / canvas.getZoom(),
+                                    selectable: false,
+                                    evented: false
+                                });
+                                canvas.add(tempRect);
+                            }
+                        });
+
+                        canvas.on('mouse:move', function(opt) {
+                            if (isDragging) {
+                                var vpt = canvas.viewportTransform;
+                                vpt[4] += opt.e.clientX - lastPosX;
+                                vpt[5] += opt.e.clientY - lastPosY;
+                                canvas.requestRenderAll();
+                                lastPosX = opt.e.clientX;
+                                lastPosY = opt.e.clientY;
+                            }
+                            
+                            if (isDrawing && tempRect) {
+                                const pointer = canvas.getPointer(opt.e);
+                                
+                                // 处理反向拖拽
+                                const left = Math.min(pointer.x, startX);
+                                const top = Math.min(pointer.y, startY);
+                                const width = Math.abs(pointer.x - startX);
+                                const height = Math.abs(pointer.y - startY);
+                                
+                                tempRect.set({ left, top, width, height });
+                                canvas.requestRenderAll();
+                            }
+                        });
+
+                        canvas.on('mouse:up', function() {
+                            if (isDragging) {
+                                canvas.setViewportTransform(canvas.viewportTransform);
+                                isDragging = false;
+                                canvas.selection = !isDragMode.value;
+                                canvas.defaultCursor = (isDragMode.value || isSpacePressed.value) ? 'grab' : 'default';
+                            }
+                            
+                            if (isDrawing && tempRect) {
+                                isDrawing = false;
+                                canvas.selection = true;
+                                // 如果框太小，视为误触
+                                if (tempRect.width > 5 && tempRect.height > 5) {
+                                    createManualDetection(tempRect);
+                                }
+                                canvas.remove(tempRect);
+                                tempRect = null;
+                            }
+                        });
+
+                        window.addEventListener('resize', fitCanvasWrapper);
+                    });
+                };
+
+                const fitCanvasWrapper = () => {
+                    const wrapper = document.getElementById('canvas-wrapper');
+                    if (wrapper && canvas) {
+                        canvas.setWidth(wrapper.clientWidth);
+                        canvas.setHeight(wrapper.clientHeight);
+                    }
+                };
+
+                const selectImage = async (img) => {
+                    currentImage.value = img;
+                    loadingCanvas.value = true;
+                    
+                    try {
+                        const res = await axios.get(API_BASE + '/images/' + img.id);
+                        currentImage.value = res.data; // detailed info with detections
+                        
+                        const imageUrl = API_BASE + '/file/' + encodeURIComponent(res.data.file_path);
+                        
+                        fabric.Image.fromURL(imageUrl, (imgObj) => {
+                            if (!imgObj) {
+                                ElMessage.error('无法加载图片文件');
+                                loadingCanvas.value = false;
+                                return;
+                            }
+                            
+                            canvas.clear();
+                            objectMap.clear();
+                            
+                            // 默认适应屏幕
+                            const wrapper = document.getElementById('canvas-wrapper');
+                            const wrapperW = wrapper.clientWidth;
+                            const wrapperH = wrapper.clientHeight;
+                            
+                            // 确保 Canvas 尺寸与容器一致
+                            canvas.setWidth(wrapperW);
+                            canvas.setHeight(wrapperH);
+                            
+                            // 留出 20px 边距
+                            const scale = Math.min(
+                                (wrapperW - 20) / imgObj.width,
+                                (wrapperH - 20) / imgObj.height
+                            );
+                            
+                            canvas.setBackgroundImage(imgObj, canvas.renderAll.bind(canvas));
+                            canvas.setZoom(scale);
+                            
+                            const vpt = canvas.viewportTransform;
+                            vpt[4] = (wrapperW - imgObj.width * scale) / 2;
+                            vpt[5] = (wrapperH - imgObj.height * scale) / 2;
+                            
+                            drawDetections(res.data.detections, imgObj.width, imgObj.height);
+                            loadingCanvas.value = false;
+                        }, { crossOrigin: 'anonymous' });
+                        
+                    } catch (e) {
+                        ElMessage.error('加载图片失败');
+                        loadingCanvas.value = false;
+                    }
+                };
+
+                const drawDetections = (detections, imgW, imgH) => {
+                    if (!detections) return;
+                    detections.forEach(det => {
+                        // Filter
+                        if (filterClass.value !== 'ALL' && det.class_id !== filterClass.value) return;
+
+                        const w = det.width * imgW;
+                        const h = det.height * imgH;
+                        const x = (det.x_center * imgW) - (w / 2);
+                        const y = (det.y_center * imgH) - (h / 2);
+                        
+                        const color = getClassColor(det.class_id || 0);
+
+                        const rect = new fabric.Rect({
+                            left: x,
+                            top: y,
+                            width: w,
+                            height: h,
+                            fill: color + '1A',
+                            stroke: color,
+                            strokeWidth: 2 / canvas.getZoom(),
+                            strokeDashArray: null,
+                            transparentCorners: false,
+                            cornerColor: color,
+                            cornerSize: 8 / canvas.getZoom(),
+                            noScaleCache: false,
+                            strokeUniform: true 
+                        });
+                        
+                        rect.data = det;
+                        canvas.add(rect);
+                        objectMap.set(det.id, rect);
+                    });
+                    canvas.requestRenderAll();
+                };
+
+                const createManualDetection = async (rect) => {
+                    if (!currentImage.value) return;
+                    
+                    const imgW = currentImage.value.width;
+                    const imgH = currentImage.value.height;
+                    
+                    const width = rect.width / imgW;
+                    const height = rect.height / imgH;
+                    const x_center = (rect.left + rect.width / 2) / imgW;
+                    const y_center = (rect.top + rect.height / 2) / imgH;
+                    
+                    // 获取当前选中的类别
+                    const cls = classList.value.find(c => c.id === currentClass.value) || classList.value[0];
+                    
+                    try {
+                        const payload = {
+                            image_id: currentImage.value.id,
+                            class_id: cls.id,
+                            class_name: cls.name,
+                            confidence: 1.0,
+                            x_center, y_center, width, height,
+                            is_manual: true
+                        };
+                        
+                        const res = await axios.post(API_BASE + '/images/detections/', payload);
+                        const newDet = res.data;
+                        
+                        // 添加到本地列表和画布
+                        currentImage.value.detections.push(newDet);
+                        
+                        // 绘制新框
+                        drawSingleDetection(newDet, imgW, imgH);
+                        
+                        ElMessage.success('已添加标注');
+                    } catch (e) {
+                        ElMessage.error('添加失败');
+                        console.error(e);
+                    }
+                };
+
+                const drawSingleDetection = (det, imgW, imgH) => {
+                    const w = det.width * imgW;
+                    const h = det.height * imgH;
+                    const x = (det.x_center * imgW) - (w / 2);
+                    const y = (det.y_center * imgH) - (h / 2);
+                    
+                    const color = getClassColor(det.class_id || 0);
+
+                    const rect = new fabric.Rect({
+                        left: x,
+                        top: y,
+                        width: w,
+                        height: h,
+                        fill: color + '1A',
+                        stroke: color,
+                        strokeWidth: 2 / canvas.getZoom(),
+                        strokeDashArray: null,
+                        transparentCorners: false,
+                        cornerColor: color,
+                        cornerSize: 8 / canvas.getZoom(),
+                        noScaleCache: false,
+                        strokeUniform: true 
+                    });
+                    
+                    rect.data = det;
+                    canvas.add(rect);
+                    objectMap.set(det.id, rect);
+                    canvas.setActiveObject(rect);
+                    canvas.requestRenderAll();
+                };
+
+                const updateDetectionFromCanvas = async (obj) => {
+                    const det = obj.data;
+                    const imgW = currentImage.value.width;
+                    const imgH = currentImage.value.height;
+                    
+                    const newW = obj.getScaledWidth();
+                    const newH = obj.getScaledHeight();
+                    const x_center = (obj.left + newW / 2) / imgW;
+                    const y_center = (obj.top + newH / 2) / imgH;
+                    const width = newW / imgW;
+                    const height = newH / imgH;
+                    
+                    try {
+                        await axios.put(API_BASE + '/images/detections/' + det.id, {
+                            ...det, x_center, y_center, width, height, is_manual: true
+                        });
+                        
+                        // Update local data
+                        Object.assign(det, { x_center, y_center, width, height, is_manual: true });
+                        
+                        const color = getClassColor(det.class_id || 0);
+                        obj.set('stroke', color);
+                        obj.set('fill', color + '1A');
+                        obj.set('strokeDashArray', null);
+                        canvas.requestRenderAll();
+                        
+                    } catch (e) {
+                        ElMessage.error('更新失败');
+                    }
+                };
+
+                const deleteDetection = async (det) => {
+                    try {
+                        await axios.delete(API_BASE + '/images/detections/' + det.id);
+                        const obj = objectMap.get(det.id);
+                        if (obj) {
+                            canvas.remove(obj);
+                            objectMap.delete(det.id);
+                        }
+                        const idx = currentImage.value.detections.findIndex(d => d.id === det.id);
+                        if (idx > -1) currentImage.value.detections.splice(idx, 1);
+                        ElMessage.success('已删除');
+                    } catch (e) {
+                        ElMessage.error('删除失败');
+                    }
+                };
+
+                const deleteSelected = () => {
+                    const activeObj = canvas.getActiveObject();
+                    if (activeObj && activeObj.data) {
+                        deleteDetection(activeObj.data);
+                    }
+                };
+                
+                const selectDetectionOnCanvas = (det) => {
+                    const obj = objectMap.get(det.id);
+                    if (obj) {
+                        canvas.setActiveObject(obj);
+                        canvas.requestRenderAll();
+                    }
+                };
+
+                const toggleDragMode = () => {
+                    isDragMode.value = !isDragMode.value;
+                    if (canvas) {
+                        canvas.defaultCursor = isDragMode.value ? 'grab' : 'default';
+                        canvas.selection = !isDragMode.value;
+                        // Cancel any active drawing
+                        isDrawing = false;
+                        if (tempRect) {
+                            canvas.remove(tempRect);
+                            tempRect = null;
+                        }
+                    }
+                };
+
+                const fitCanvas = () => {
+                    if (!currentImage.value || !canvas) return;
+                    
+                    const imgObj = canvas.backgroundImage;
+                    if (!imgObj) return;
+
+                    const wrapper = document.getElementById('canvas-wrapper');
+                    const wrapperW = wrapper.clientWidth;
+                    const wrapperH = wrapper.clientHeight;
+                    
+                    // 确保 Canvas 尺寸同步
+                    canvas.setWidth(wrapperW);
+                    canvas.setHeight(wrapperH);
+
+                    const scale = Math.min(
+                        (wrapperW - 20) / imgObj.width,
+                        (wrapperH - 20) / imgObj.height
+                    );
+                    
+                    canvas.setZoom(scale);
+                    const vpt = canvas.viewportTransform;
+                    vpt[4] = (wrapperW - imgObj.width * scale) / 2;
+                    vpt[5] = (wrapperH - imgObj.height * scale) / 2;
+                    canvas.requestRenderAll();
+                };
+
+                const calculateProgress = (task) => {
+                    if (!task.total_images || task.total_images === 0) return 0;
+                    return Math.floor((task.processed_count / task.total_images) * 100);
+                };
+
+                const deleteTask = async (task) => {
+                    try {
+                        await axios.delete(API_BASE + '/tasks/' + task.id);
+                        ElMessage.success('任务已删除');
+                        // Remove from local list or refresh
+                        const idx = tasks.value.findIndex(t => t.id === task.id);
+                        if (idx > -1) tasks.value.splice(idx, 1);
+                        if (currentTask.value && currentTask.value.id === task.id) {
+                            currentTask.value = null;
+                            activeTab.value = 'tasks';
+                        }
+                    } catch (e) {
+                        ElMessage.error('删除任务失败');
+                    }
+                };
+
+                // Helpers
+                const updateSelectedTasks = () => {
+                    // State is updated via v-model, this handler can be empty or used for side effects
+                };
+
+                const getStatusType = (status) => {
+                    switch(status) {
+                        case 'completed': return 'success';
+                        case 'processing': return 'warning';
+                        case 'failed': return 'danger';
+                        default: return 'info';
+                    }
+                };
+
+                const getStatusText = (status) => {
+                    switch(status) {
+                        case 'completed': return '完成';
+                        case 'processing': return '处理中';
+                        case 'failed': return '失败';
+                        default: return '等待';
+                    }
+                };
+
+                const formatTime = (timeStr) => {
+                    if (!timeStr) return '';
+                    const d = new Date(timeStr);
+                    return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                };
+
+                // Lifecycle
+                onMounted(async () => {
+                    await fetchSystemStatus();
+                    await fetchModels();
+                    await fetchTasks();
+                    initCanvas();
+                    
+                    window.addEventListener('keydown', (e) => {
+                        if (e.key === 'Delete') deleteSelected();
+                        if (e.code === 'Space' && !e.repeat && !e.target.matches('input, textarea')) {
+                            e.preventDefault(); // Prevent scrolling
+                            isSpacePressed.value = true;
+                            if (canvas) {
+                                canvas.defaultCursor = 'grab';
+                                canvas.selection = false;
+                            }
+                        }
+                    });
+                    
+                    window.addEventListener('keyup', (e) => {
+                        if (e.code === 'Space') {
+                            isSpacePressed.value = false;
+                            if (canvas) {
+                                canvas.defaultCursor = isDragMode.value ? 'grab' : 'default';
+                                canvas.selection = !isDragMode.value;
+                            }
+                        }
+                    });
+                    
+                    // Auto refresh tasks every 2s if there are processing or pending tasks
+                    setInterval(() => {
+                        if (tasks.value.some(t => t.status === 'processing' || t.status === 'pending')) {
+                            fetchTasks();
+                        }
+                    }, 2000);
+                });
+
+                    return {
+                    activeTab, tasks, currentTask, currentTaskImages, currentImage,
+                    availableModels, showNewTaskDialog, showExportDialog,
+                    newTaskForm, exportForm, activeCollapse,
+                    newTaskForm_fileList, // Export this
+                    loadingImages, loadingCanvas, creatingTask, exporting,
+                    currentClass, classList, currentDetections, selectedTaskIds, selectedTasksList,
+                    workspaceRef, hasActiveObject, systemStatus,
+                    filterClass, filteredDetections, getClassColor,
+                    
+                    fetchModels, fetchTasks, selectTask, selectImage,
+                    submitNewTask, submitExport, updateSelectedTasks,
+                    updateDetectionFromCanvas, deleteDetection, deleteSelected,  
+                    selectDetectionOnCanvas, fitCanvas, toggleDragMode, isDragMode,
+                    getStatusType, getStatusText, formatTime,
+                    pickFolder, pickFile, pickFiles, 
+                    pickFilesAppend, pickFolderAppend, clearFileList, removeFileFromList, // Export these
+                    calculateProgress, deleteTask,
+                    
+                    showCorrectionDialog, correctionPoints, correcting, correctionImageList, currentCorrectionIndex,
+                    openCorrection, closeCorrection, clearCorrectionPoints, submitCorrection, nextCorrectionImage, prevCorrectionImage
+                };
+            }
+        };
+
+        const app = createApp(App);
+        app.use(ElementPlus);
+        for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
+            app.component(key, component);
+        }
+        app.mount('#app');
+    </script>
+</body>
+</html>

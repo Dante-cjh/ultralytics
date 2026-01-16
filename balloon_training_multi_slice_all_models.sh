@@ -40,10 +40,15 @@ BATCH=16
 PATIENCE=20
 
 # SAHI推理参数
-CONFIDENCE=0.25
+CONFIDENCE=0.3
 SLICE_HEIGHT=640
 SLICE_WIDTH=640
-OVERLAP_RATIO=0.2
+OVERLAP_RATIO=0.15
+POSTPROCESS_TYPE="NMS"
+POSTPROCESS_THRESHOLD=0.6
+POSTPROCESS_METRIC="IOS"
+MIN_BOX_AREA=200
+MAX_DETECTIONS=50
 
 # 时间戳
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
@@ -162,7 +167,12 @@ run_sahi_inference() {
         --slice-height ${SLICE_HEIGHT} \
         --slice-width ${SLICE_WIDTH} \
         --overlap-height ${OVERLAP_RATIO} \
-        --overlap-width ${OVERLAP_RATIO}
+        --overlap-width ${OVERLAP_RATIO} \
+        --postprocess-type ${POSTPROCESS_TYPE} \
+        --postprocess-threshold ${POSTPROCESS_THRESHOLD} \
+        --postprocess-metric ${POSTPROCESS_METRIC} \
+        --min-box-area ${MIN_BOX_AREA} \
+        --max-detections ${MAX_DETECTIONS}
     
     if [ $? -eq 0 ]; then
         log_info "✅ SAHI推理完成: ${dataset_type}"

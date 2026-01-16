@@ -23,7 +23,7 @@ class BalloonInference:
         model_path: str,
         confidence_threshold: float = 0.25,
         iou_threshold: float = 0.5,
-        device: str = "cuda:0"
+        device: str = "cuda:7"
     ):
         """
         初始化推理器
@@ -251,7 +251,7 @@ def main():
     parser.add_argument("--model", type=str, required=True, help="训练好的模型路径")
     parser.add_argument("--confidence", type=float, default=0.25, help="置信度阈值")
     parser.add_argument("--iou", type=float, default=0.5, help="NMS IoU阈值")
-    parser.add_argument("--device", type=str, default="cuda:0", help="设备 (cuda:0 或 cpu)")
+    parser.add_argument("--device", type=str, default="cuda:7", help="设备 (cuda:0 或 cpu)")
     
     # 输入输出
     parser.add_argument("--source", type=str, help="图像路径或目录")

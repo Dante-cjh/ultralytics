@@ -218,40 +218,51 @@ def crop_and_save(
         ph, pw = patch_im.shape[:2]
 
         label = window_objs[i]
-        if len(label) or allow_background_images:
+        has_objects = len(label) > 0
+        
+        # 保存图像（有目标或允许背景图像）
+        if has_objects or allow_background_images:
             cv2.imwrite(str(Path(im_dir) / f"{new_name}.jpg"), patch_im)
-        if len(label):
-            # 将标签转换为新窗口的相对坐标
-            new_label = label.copy()
-            # YOLO格式: class_id x_center y_center width height (归一化)
-            # 先转换为绝对坐标
-            new_label[:, 1] *= w  # x_center
-            new_label[:, 2] *= h  # y_center
-            new_label[:, 3] *= w  # width
-            new_label[:, 4] *= h  # height
             
-            # 调整为窗口坐标
-            new_label[:, 1] -= x_start  # x_center
-            new_label[:, 2] -= y_start  # y_center
+            # 关键修复：无论是否有目标，都创建标签文件
+            label_file = Path(lb_dir) / f"{new_name}.txt"
             
-            # 归一化到新窗口
-            new_label[:, 1] /= pw  # x_center
-            new_label[:, 2] /= ph  # y_center
-            new_label[:, 3] /= pw  # width
-            new_label[:, 4] /= ph  # height
-            
-            # 裁剪坐标到有效范围 [0, 1]，避免边缘目标坐标超出范围
-            new_label[:, 1:] = np.clip(new_label[:, 1:], 0, 1)
-            
-            # 过滤掉无效的标注（宽高接近0的）
-            valid_mask = (new_label[:, 3] > 0.01) & (new_label[:, 4] > 0.01)
-            new_label = new_label[valid_mask]
-            
-            # 保存标签
-            with open(Path(lb_dir) / f"{new_name}.txt", "w", encoding="utf-8") as f:
-                for lb in new_label:
-                    formatted_coords = [f"{coord:.6g}" for coord in lb[1:]]
-                    f.write(f"{int(lb[0])} {' '.join(formatted_coords)}\n")
+            if has_objects:
+                # 有目标：转换并保存标签
+                new_label = label.copy()
+                # YOLO格式: class_id x_center y_center width height (归一化)
+                # 先转换为绝对坐标
+                new_label[:, 1] *= w  # x_center
+                new_label[:, 2] *= h  # y_center
+                new_label[:, 3] *= w  # width
+                new_label[:, 4] *= h  # height
+                
+                # 调整为窗口坐标
+                new_label[:, 1] -= x_start  # x_center
+                new_label[:, 2] -= y_start  # y_center
+                
+                # 归一化到新窗口
+                new_label[:, 1] /= pw  # x_center
+                new_label[:, 2] /= ph  # y_center
+                new_label[:, 3] /= pw  # width
+                new_label[:, 4] /= ph  # height
+                
+                # 裁剪坐标到有效范围 [0, 1]，避免边缘目标坐标超出范围
+                new_label[:, 1:] = np.clip(new_label[:, 1:], 0, 1)
+                
+                # 过滤掉无效的标注（宽高接近0的）
+                valid_mask = (new_label[:, 3] > 0.01) & (new_label[:, 4] > 0.01)
+                new_label = new_label[valid_mask]
+                
+                # 保存标签
+                with open(label_file, "w", encoding="utf-8") as f:
+                    for lb in new_label:
+                        formatted_coords = [f"{coord:.6g}" for coord in lb[1:]]
+                        f.write(f"{int(lb[0])} {' '.join(formatted_coords)}\n")
+            else:
+                # 没有目标：创建空标签文件（负样本）
+                with open(label_file, "w", encoding="utf-8") as f:
+                    pass  # 创建空文件
 
 
 def split_images_and_labels(

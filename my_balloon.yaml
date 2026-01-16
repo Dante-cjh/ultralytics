@@ -22,10 +22,3 @@ info:
   contributor: "MMDetection User"
   url: ""
   date_created: "2025-07-29"
-  
-# 数据集统计信息
-stats:
-  train_images: 61    # 训练图像数量
-  val_images: 13      # 验证图像数量
-  train_instances: 255 # 训练实例数量
-  val_instances: 50   # 验证实例数量 
