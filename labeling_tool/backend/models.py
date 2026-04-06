@@ -48,7 +48,8 @@ class ImageRecord(Base):
     width = Column(Integer)
     height = Column(Integer)
     status = Column(String, default="inferred") # inferred(已推理), corrected(已修订), exported(已导出)
-    
+    settings = Column(JSON, default=dict)
+
     # 关联
     task = relationship("InferenceTask", back_populates="images")
     detections = relationship("Detection", back_populates="image", cascade="all, delete-orphan")

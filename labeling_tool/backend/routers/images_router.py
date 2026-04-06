@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from typing import List
 from pydantic import BaseModel
 from .. import schemas, models, database
-from ..image_utils import process_perspective_correction
+from ..image_utils import process_perspective_correction, process_auto_stitch
 
 router = APIRouter(
     prefix="/images",
@@ -13,6 +13,22 @@ router = APIRouter(
 class CorrectionRequest(BaseModel):
     image_path: str
     points: List[List[float]] # [[x,y], [x,y], [x,y], [x,y]]
+
+class StitchRequest(BaseModel):
+    image_paths: List[str]
+
+@router.post("/stitch")
+def stitch_images(req: StitchRequest):
+    try:
+        if len(req.image_paths) < 2:
+            raise HTTPException(status_code=400, detail="Need at least 2 images to stitch")
+            
+        new_path = process_auto_stitch(req.image_paths)
+        return {"success": True, "new_path": new_path}
+    except Exception as e:
+        print(f"Stitching failed: {e}")
+        # Return a 400 instead of 500 for expected algorithm failures so the frontend can handle it gracefully
+        raise HTTPException(status_code=400, detail=str(e))
 
 @router.post("/correct-perspective")
 def correct_perspective(req: CorrectionRequest):
@@ -32,6 +48,16 @@ def get_image(image_id: int, db: Session = Depends(database.get_db)):
     if not image:
         raise HTTPException(status_code=404, detail="Image not found")
     return image
+
+@router.put("/{image_id}/settings")
+def update_image_settings(image_id: int, settings: dict, db: Session = Depends(database.get_db)):
+    image = db.query(models.ImageRecord).filter(models.ImageRecord.id == image_id).first()
+    if not image:
+        raise HTTPException(status_code=404, detail="Image not found")
+    image.settings = settings
+    db.commit()
+    db.refresh(image)
+    return {"success": True}
 
 @router.post("/detections/", response_model=schemas.Detection)
 def create_detection(det: schemas.DetectionCreate, db: Session = Depends(database.get_db)):
@@ -78,6 +104,47 @@ def delete_detection(detection_id: int, db: Session = Depends(database.get_db)):
     db.delete(det)
     db.commit()
     return {"status": "success"}
+
+@router.post("/save-base64")
+def save_base64_image(req: dict):
+    """
+    保存前端传来的 Base64 图片数据
+    """
+    try:
+        import base64
+        import time
+        from pathlib import Path
+        
+        image_data = req.get('image_data')
+        prefix = req.get('prefix', 'image')
+        
+        if not image_data or not image_data.startswith('data:image/'):
+            raise HTTPException(status_code=400, detail="Invalid image data")
+            
+        # 解析 base64
+        header, encoded = image_data.split(",", 1)
+        data = base64.b64decode(encoded)
+        
+        # 确定扩展名
+        ext = ".png"
+        if "jpeg" in header or "jpg" in header:
+            ext = ".jpg"
+            
+        project_root = Path(__file__).resolve().parent.parent.parent.parent
+        save_dir = project_root / "runs" / "stitched_images"
+        save_dir.mkdir(parents=True, exist_ok=True)
+        
+        timestamp = int(time.time())
+        new_filename = f"{prefix}_{timestamp}{ext}"
+        new_path = save_dir / new_filename
+        
+        with open(new_path, "wb") as f:
+            f.write(data)
+            
+        return {"success": True, "new_path": str(new_path)}
+    except Exception as e:
+        print(f"Save base64 failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.put("/detections/{detection_id}", response_model=schemas.Detection)
 def update_detection(detection_id: int, det_update: schemas.DetectionCreate, db: Session = Depends(database.get_db)):
