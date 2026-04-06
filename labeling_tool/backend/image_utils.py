@@ -105,3 +105,52 @@ def process_perspective_correction(image_path_str: str, points: list) -> str:
         raise ValueError("Failed to encode corrected image")
     
     return str(new_path)
+
+def process_auto_stitch(image_paths: list) -> str:
+    """
+    自动拼接图片
+    Args:
+        image_paths: 待拼接图片的路径列表
+    Returns:
+        拼接后图片的路径
+    """
+    if len(image_paths) < 2:
+        raise ValueError("Need at least 2 images to stitch")
+
+    images = []
+    for path_str in image_paths:
+        path = Path(path_str)
+        if not path.exists():
+            raise FileNotFoundError(f"Image not found: {path_str}")
+        img_data = np.fromfile(str(path), dtype=np.uint8)
+        img = cv2.imdecode(img_data, cv2.IMREAD_COLOR)
+        if img is None:
+            raise ValueError(f"Failed to decode image: {path_str}")
+        images.append(img)
+
+    stitcher = cv2.Stitcher_create()
+    status, stitched_image = stitcher.stitch(images)
+
+    if status != cv2.Stitcher_OK:
+        error_msg = {
+            cv2.Stitcher_ERR_NEED_MORE_IMGS: "需要更多图像才能完成拼接",
+            cv2.Stitcher_ERR_HOMOGRAPHY_EST_FAIL: "单应性矩阵估计失败，图像特征不足或不匹配",
+            cv2.Stitcher_ERR_CAMERA_PARAMS_ADJUST_FAIL: "相机参数估计失败",
+        }.get(status, f"拼接失败，未知错误代码: {status}")
+        raise ValueError(error_msg)
+
+    project_root = Path(__file__).resolve().parent.parent.parent
+    save_dir = project_root / "runs" / "stitched_images"
+    save_dir.mkdir(parents=True, exist_ok=True)
+
+    import time
+    new_filename = f"stitched_{int(time.time())}.jpg"
+    new_path = save_dir / new_filename
+
+    is_success, buffer = cv2.imencode('.jpg', stitched_image)
+    if is_success:
+        buffer.tofile(str(new_path))
+    else:
+        raise ValueError("Failed to encode stitched image")
+
+    return str(new_path)

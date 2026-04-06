@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>智能检测系统 - 操作手册</title>
+    <!-- Vue 3 -->
+    <script src="/api/static/vue.global.prod.min.js"></script>
+    <!-- Element Plus -->
+    <link rel="stylesheet" href="/api/static/index.css" />
+    <script src="/api/static/index.full.min.js"></script>
+    <script src="/api/static/element-plus-icons-vue.global.iife.min.js"></script>
+    
+    <style>
+        :root {
+            --el-color-primary: #409EFF;
+            --el-bg-color-page: #f2f3f5;
+        }
+        
+        body { 
+            margin: 0; 
+            padding: 0; 
+            font-family: 'Helvetica Neue', Helvetica, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', Arial, sans-serif; 
+            background-color: var(--el-bg-color-page); 
+        }
+        
+        .header {
+            height: 60px;
+            background: #fff;
+            border-bottom: 1px solid #dcdfe6;
+            display: flex;
+            align-items: center;
+            padding: 0 20px;
+            box-shadow: 0 1px 4px rgba(0,21,41,.08);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        
+        .header-title {
+            font-size: 20px;
+            font-weight: 600;
+            color: #303133;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .main-container {
+            max-width: 1200px;
+            margin: 20px auto;
+            display: flex;
+            gap: 20px;
+            align-items: flex-start;
+        }
+
+        .sidebar {
+            width: 250px;
+            flex-shrink: 0;
+            position: sticky;
+            top: 80px;
+        }
+
+        .content {
+            flex: 1;
+            background: #fff;
+            padding: 30px 40px;
+            border-radius: 8px;
+            box-shadow: 0 2px 12px 0 rgba(0,0,0,0.05);
+            min-height: calc(100vh - 140px);
+        }
+
+        .content h1 {
+            font-size: 28px;
+            color: #303133;
+            margin-top: 0;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #ebeef5;
+            margin-bottom: 30px;
+        }
+
+        .content h2 {
+            font-size: 22px;
+            color: #303133;
+            margin-top: 40px;
+            margin-bottom: 20px;
+            padding-left: 10px;
+            border-left: 4px solid var(--el-color-primary);
+        }
+
+        .content h3 {
+            font-size: 18px;
+            color: #606266;
+            margin-top: 25px;
+            margin-bottom: 15px;
+        }
+
+        .content p {
+            font-size: 15px;
+            line-height: 1.8;
+            color: #606266;
+            margin-bottom: 15px;
+        }
+
+        .content ul {
+            padding-left: 20px;
+            margin-bottom: 15px;
+        }
+
+        .content li {
+            font-size: 15px;
+            line-height: 1.8;
+            color: #606266;
+            margin-bottom: 8px;
+        }
+
+        .highlight-box {
+            background-color: #f4f4f5;
+            border-radius: 4px;
+            padding: 15px 20px;
+            margin: 20px 0;
+            border-left: 4px solid #909399;
+        }
+
+        .highlight-box.tip {
+            background-color: #f0f9eb;
+            border-left-color: #67c23a;
+        }
+
+        .highlight-box.warning {
+            background-color: #fdf6ec;
+            border-left-color: #e6a23c;
+        }
+        
+        .shortcut-key {
+            display: inline-block;
+            padding: 2px 8px;
+            background-color: #f4f4f5;
+            border: 1px solid #dcdfe6;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 14px;
+            color: #606266;
+            box-shadow: 0 1px 1px rgba(0,0,0,0.1);
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <header class="header">
+            <div class="header-title">
+                <el-icon color="#409EFF"><Document /></el-icon>
+                智能检测系统 - 操作手册
+            </div>
+            <div style="margin-left: auto;">
+                <el-button type="primary" plain @click="goBack" icon="Back">返回系统</el-button>
+            </div>
+        </header>
+
+        <div class="main-container">
+            <div class="sidebar">
+                <el-menu :default-active="activeMenu" @select="handleSelect" style="border-radius: 8px; border: none; box-shadow: 0 2px 12px 0 rgba(0,0,0,0.05);">
+                    <el-menu-item index="intro">
+                        <el-icon><InfoFilled /></el-icon>
+                        <span>系统简介</span>
+                    </el-menu-item>
+                    <el-menu-item index="inference">
+                        <el-icon><Cpu /></el-icon>
+                        <span>推理和分析</span>
+                    </el-menu-item>
+                    <el-menu-item index="labeling">
+                        <el-icon><EditPen /></el-icon>
+                        <span>数据标注</span>
+                    </el-menu-item>
+                    <el-menu-item index="statistics">
+                        <el-icon><PieChart /></el-icon>
+                        <span>统计分析</span>
+                    </el-menu-item>
+                    <el-menu-item index="faq">
+                        <el-icon><QuestionFilled /></el-icon>
+                        <span>常见问题</span>
+                    </el-menu-item>
+                </el-menu>
+            </div>
+
+            <div class="content" id="content-container">
+                <!-- 系统简介 -->
+                <div v-show="activeMenu === 'intro'">
+                    <h1>系统简介</h1>
+                    <p>欢迎使用智能检测系统。本系统是一款集成了深度学习目标检测、图像预处理与拼接、数据标注以及统计分析于一体的综合性平台，旨在为缺陷检测、目标识别等工业应用场景提供端到端的解决方案。</p>
+                    
+                    <h3>核心功能模块</h3>
+                    <ul>
+                        <li><strong>推理和分析：</strong> 提供基于深度学习模型（如YOLO系列）的图像自动化推理与检测。支持图像预处理（亮度、对比度调整等）、透视校正、图像拼接，以及一键式的批量检测。</li>
+                        <li><strong>数据标注：</strong> 提供高效的图像边界框（Bounding Box）标注工具。支持快捷键操作、数据管理、标签类别自定义，可用于模型训练数据的快速构建与校对。</li>
+                        <li><strong>统计分析：</strong> 对推理结果或标注数据进行多维度的可视化分析，生成直观的图表（饼图、柱状图等），帮助用户快速了解数据分布与缺陷情况。</li>
+                    </ul>
+
+                    <div class="highlight-box tip">
+                        <strong><el-icon><Lightbulb /></el-icon> 提示：</strong> 建议在使用本系统前，确保已正确配置好GPU环境（CUDA），以获得最佳的推理与处理速度。在系统的"推理和分析"页面右上角可以查看当前GPU状态。
+                    </div>
+                </div>
+
+                <!-- 推理和分析 -->
+                <div v-show="activeMenu === 'inference'">
+                    <h1>推理和分析</h1>
+                    <p>该模块主要用于对输入图像进行自动化模型推理与缺陷检测。您可以添加单张图片或整个文件夹，进行预处理后提交推理任务。</p>
+
+                    <h2>1. 新建推理任务</h2>
+                    <p>在界面左侧区域，您可以新建推理任务：</p>
+                    <ul>
+                        <li><strong>添加数据源：</strong> 点击 <strong>[添加文件]</strong> 或 <strong>[扫描文件夹]</strong> 导入需要检测的图像（支持jpg, png等格式）。</li>
+                        <li><strong>推理设置：</strong> 点击右上角 <strong>[推理设置]</strong>，可调整置信度阈值（Confidence）和交并比阈值（IoU）等参数。也可以选择使用哪种模型进行推理。</li>
+                        <li><strong>提交任务：</strong> 确认文件列表后，点击 <strong>[开始推理]</strong>。系统将自动在后台进行处理。</li>
+                    </ul>
+
+                    <h2>2. 图像预览与预处理</h2>
+                    <p>在界面中间的预览区域，您可以对选中的图片进行预处理操作，以提升检测效果：</p>
+                    <ul>
+                        <li><strong>视图模式：</strong> 查看当前图像，在下方的 <strong>图像预处理</strong> 栏可以调整亮度、对比度、曝光等参数。</li>
+                        <li><strong>透视校正：</strong> 切换到"透视校正"模式，拖动控制点（四角），校正图像的透视畸变。</li>
+                        <li><strong>图像拼接：</strong> 在文件列表中勾选多张图片，点击 <strong>[图像拼接]</strong>，系统将尝试将多张局部图片拼接成一张全景图。</li>
+                        <li>调整完毕后，可点击 <strong>[应用当前设置]</strong> 或 <strong>[应用至选中项]</strong> 以保存预处理参数。</li>
+                    </ul>
+
+                    <h2>3. 任务管理与结果分析</h2>
+                    <p>在界面右侧区域，显示所有历史及当前的推理任务：</p>
+                    <ul>
+                        <li>您可以实时查看任务的运行状态（排队中、运行中、已完成、错误）。</li>
+                        <li>对于已完成的任务，点击 <strong>[分析]</strong> 按钮，进入结果详情页，查看模型检测出的目标与缺陷框。</li>
+                        <li>对于失败或中断的任务，可尝试重新运行或删除。</li>
+                    </ul>
+                </div>
+
+                <!-- 数据标注 -->
+                <div v-show="activeMenu === 'labeling'">
+                    <h1>数据标注</h1>
+                    <p>数据标注模块用于人工对图像中的目标或缺陷进行边界框（BBox）绘制与类别指定，生成用于模型训练的高质量数据集。</p>
+
+                    <h2>1. 数据集选择与图像浏览</h2>
+                    <ul>
+                        <li>在左侧面板选择需要标注的目录或数据集。</li>
+                        <li>下方会列出该目录下的所有图片。点击图片即可在中央画布中打开。</li>
+                        <li>带有 <el-icon color="#67C23A"><Check /></el-icon> 标记的图片表示已完成标注。</li>
+                    </ul>
+
+                    <h2>2. 标注操作指南</h2>
+                    <p>在中央画布区域：</p>
+                    <ul>
+                        <li><strong>绘制拉框：</strong> 在图像上按住鼠标左键并拖动，即可绘制一个新的边界框。</li>
+                        <li><strong>修改类别：</strong> 选中已绘制的框，在右侧属性面板或弹出的下拉框中选择对应的缺陷类别。</li>
+                        <li><strong>调整大小与位置：</strong> 选中框后，拖动框的边缘控制点以缩放，或拖动框体进行移动。</li>
+                        <li><strong>平移与缩放画布：</strong> 滚动鼠标滚轮可缩放画布；按住 <strong>空格键 + 鼠标左键拖动</strong> 可平移画布。</li>
+                    </ul>
+
+                    <h2>3. 快捷键列表</h2>
+                    <div class="highlight-box">
+                        <ul>
+                            <li><span class="shortcut-key">左键拖动</span> : 绘制边界框 / 移动边界框</li>
+                            <li><span class="shortcut-key">滚轮</span> : 缩放图片</li>
+                            <li><span class="shortcut-key">空格 + 拖动</span> 或 <span class="shortcut-key">右键拖动</span> : 平移图片画布</li>
+                            <li><span class="shortcut-key">Delete</span> 或 <span class="shortcut-key">Backspace</span> : 删除选中的边界框</li>
+                            <li><span class="shortcut-key">A</span> / <span class="shortcut-key">D</span> 或 <span class="shortcut-key">←</span> / <span class="shortcut-key">→</span> : 切换上一张 / 下一张图片</li>
+                        </ul>
+                    </div>
+
+                    <div class="highlight-box warning">
+                        <strong><el-icon><Warning /></el-icon> 注意：</strong> 系统会自动保存您的标注结果。无需手动点击保存按钮。
+                    </div>
+                </div>
+
+                <!-- 统计分析 -->
+                <div v-show="activeMenu === 'statistics'">
+                    <h1>统计分析</h1>
+                    <p>统计分析模块提供直观的数据可视化功能，帮助您宏观把握检测或标注数据的整体情况。</p>
+
+                    <h2>1. 查看统计图表</h2>
+                    <ul>
+                        <li>模块加载后，系统会自动聚合当前数据集的缺陷与目标信息。</li>
+                        <li><strong>饼图/环形图：</strong> 展示各类缺陷（如划痕、裂纹、异物等）在总体中所占的比例分布。</li>
+                        <li><strong>柱状图：</strong> 展示各类别在具体数量上的对比，方便识别高频缺陷类型。</li>
+                    </ul>
+
+                    <h2>2. 报告导出</h2>
+                    <p>您可以根据可视化的图表及详细数据表，导出综合分析报告（如果系统提供导出按钮），以便于汇报或进一步的数据归档。</p>
+                </div>
+
+                <!-- 常见问题 -->
+                <div v-show="activeMenu === 'faq'">
+                    <h1>常见问题 (FAQ)</h1>
+                    
+                    <h3>Q: 系统提示 "CUDA 不可用，正在使用 CPU 模式" 会有什么影响？</h3>
+                    <p>A: 这意味着系统无法调用NVIDIA独立显卡进行硬件加速，而只能使用CPU进行计算。这会导致图像拼接、预处理以及深度学习模型推理的速度大幅下降。建议检查显卡驱动及CUDA环境配置是否正确。</p>
+
+                    <h3>Q: 图像拼接失败或效果不好怎么办？</h3>
+                    <p>A: 图像拼接依赖于相邻图像之间的重叠区域与特征点。如果重叠过少、图像纹理单一或存在大幅度曝光差异，拼接可能失败。您可以尝试先在"图像预处理"中统一各图的亮度/对比度，然后再进行拼接。</p>
+
+                    <h3>Q: 画布无法拖动或操作卡顿？</h3>
+                    <p>A: 请确保浏览器硬件加速已开启。若加载的图片分辨率极高，可能会导致轻微卡顿，请耐心等待渲染。拖动画布时请确保按住了<span class="shortcut-key">空格键</span>或使用鼠标右键。</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp, ref, onMounted } = Vue;
+        const app = createApp({
+            setup() {
+                const activeMenu = ref('intro');
+
+                const handleSelect = (index) => {
+                    activeMenu.value = index;
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                };
+
+                const goBack = () => {
+                    window.location.href = '/index.html';
+                };
+
+                // 处理 URL hash 实现直接跳转到某个章节
+                onMounted(() => {
+                    const hash = window.location.hash.replace('#', '');
+                    if (['intro', 'inference', 'labeling', 'statistics', 'faq'].includes(hash)) {
+                        activeMenu.value = hash;
+                    }
+                });
+
+                return {
+                    activeMenu,
+                    handleSelect,
+                    goBack
+                };
+            }
+        });
+
+        // 注册所有图标
+        for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
+            app.component(key, component);
+        }
+
+        app.use(ElementPlus, { size: 'default', zIndex: 3000 });
+        app.mount('#app');
+    </script>
+</body>
+</html>
