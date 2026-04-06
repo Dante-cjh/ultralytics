@@ -238,6 +238,8 @@
         
         .sidebar {
             width: var(--sidebar-width);
+            min-width: var(--sidebar-width);
+            flex-shrink: 0;
             background: #fff;
             border-right: 1px solid #dcdfe6;
             display: flex;
@@ -247,6 +249,8 @@
         
         .workspace-container {
             flex: 1;
+            min-width: 0;
+            overflow: hidden;
             background: #f0f2f5;
             position: relative;
             display: flex;
@@ -270,10 +274,13 @@
         
         .property-panel {
             width: var(--property-width);
+            min-width: var(--property-width);
+            flex-shrink: 0;
             background: #fff;
             border-left: 1px solid #dcdfe6;
             display: flex;
             flex-direction: column;
+            overflow-y: auto;
             z-index: 9;
         }
 
@@ -716,7 +723,7 @@
                 </div>
             </div>
 
-            <div v-show="activePage === 'labeling'" style="display: flex; width: 100%; height: 100%; overflow: hidden;">
+            <div v-show="activePage === 'labeling'" style="display: flex; flex: 1; min-width: 0; height: 100%; overflow: hidden;">
             <!-- 左侧任务/图片列表 -->
             <div class="sidebar">
                 <el-tabs v-model="activeTab" stretch class="sidebar-tabs">
