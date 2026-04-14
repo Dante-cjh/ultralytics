@@ -235,6 +235,21 @@
             background-color: #ecf5ff;
             color: var(--el-color-primary);
         }
+        .server-browser-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 14px;
+            cursor: pointer;
+            border-bottom: 1px solid #f0f0f0;
+            transition: background 0.15s;
+        }
+        .server-browser-item:hover {
+            background: #f5f7fa;
+        }
+        .server-browser-item.is-selected {
+            background: #ecf5ff !important;
+        }
         
         .sidebar {
             width: var(--sidebar-width);
@@ -601,8 +616,8 @@
                                     <div style="width: 100%; display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden;">
                                          <div style="margin-bottom: 10px; flex-shrink: 0;">
                                              <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 8px;">
-                                                 <el-button @click="pickFilesAppend" icon="DocumentAdd" type="primary" plain size="small">添加文件</el-button>
-                                                 <el-button @click="pickFolderAppend" icon="FolderAdd" size="small">扫描文件夹</el-button>
+                                                 <el-button @click="triggerLocalFileInput" icon="DocumentAdd" type="primary" plain size="small">添加文件</el-button>
+                                                 <el-button @click="triggerLocalFolderInput" icon="FolderAdd" size="small">扫描文件夹</el-button>
                                                  <el-button @click="clearFileList" icon="Delete" type="danger" plain size="small" :disabled="newTaskForm_fileList.length === 0">清空</el-button>
                                                  <span style="flex: 1;"></span>
                                                  <el-button type="primary" @click="submitNewTask" :loading="creatingTask" icon="VideoPlay" size="small">开始推理</el-button>
@@ -1224,7 +1239,7 @@
                 <el-form-item label="导出路径" required>
                     <el-input v-model="exportForm.output_dir" placeholder="请选择导出文件夹" readonly>
                         <template #append>
-                            <el-button @click="pickFolder('export')" icon="FolderOpened">选择</el-button>
+                            <el-button @click="openServerBrowserForFolder('export')" icon="FolderOpened">浏览服务器</el-button>
                         </template>
                     </el-input>
                 </el-form-item>
@@ -1270,6 +1285,44 @@
             </template>
         </el-dialog>
 
+        <!-- 服务器文件浏览器弹窗（选模型权重 / 选导出目录） -->
+        <el-dialog v-model="showServerBrowser"
+                   :title="serverBrowserTitle"
+                   width="560px" :close-on-click-modal="false">
+            <div style="margin-bottom: 10px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                <el-button size="small" icon="ArrowLeft" :disabled="!serverBrowserParent" @click="navigateDir(serverBrowserParent)">上级目录</el-button>
+                <span style="font-size: 12px; color: #909399; word-break: break-all; flex: 1;">{{ serverBrowserCurrent }}</span>
+                <el-button v-if="serverBrowserMode === 'folder'" size="small" type="primary" plain @click="selectServerFolder(serverBrowserCurrent)">
+                    选择当前目录
+                </el-button>
+            </div>
+            <div style="border: 1px solid #dcdfe6; border-radius: 4px; height: 380px; overflow-y: auto; background: #fafafa; position: relative;">
+                <div v-if="serverBrowserLoading" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.7);z-index:10;">
+                    <el-icon class="is-loading" :size="28" color="#409eff"><Loading /></el-icon>
+                </div>
+                <div v-if="serverBrowserItems.length === 0 && !serverBrowserLoading"
+                     style="text-align: center; color: #909399; padding: 40px;">
+                    当前目录为空或没有可选文件
+                </div>
+                <div v-for="item in serverBrowserItems" :key="item.path"
+                     @click="onBrowserItemClick(item)"
+                     class="server-browser-item"
+                     :class="{ 'is-selected': serverBrowserSelected === item.path }">
+                    <el-icon :color="item.type === 'dir' ? '#e6a23c' : '#409eff'" :size="18" style="flex-shrink:0">
+                        <Folder v-if="item.type === 'dir'" />
+                        <Document v-if="item.type !== 'dir'" />
+                    </el-icon>
+                    <span style="flex: 1; font-size: 13px;">{{ item.name }}</span>
+                    <span v-if="item.size_mb != null" style="font-size: 12px; color: #909399;">{{ item.size_mb }} MB</span>
+                    <el-icon v-if="item.type === 'dir'" color="#c0c4cc"><ArrowRight /></el-icon>
+                </div>
+            </div>
+            <template #footer>
+                <el-button @click="showServerBrowser = false">取消</el-button>
+                <el-button type="primary" :disabled="!serverBrowserSelected" @click="confirmServerFile">确认选择</el-button>
+            </template>
+        </el-dialog>
+
         <!-- 推理设置抽屉 -->
         <el-drawer v-model="showSettingsDrawer" title="推理高级设置" size="400px" direction="rtl">
             <el-form :model="newTaskForm" label-position="top" size="default">
@@ -1284,7 +1337,7 @@
                                 </div>
                             </el-option>
                         </el-select>
-                        <el-button @click="pickFile('model')" icon="FolderOpened">浏览</el-button>
+                        <el-button @click="openServerBrowser" icon="FolderOpened">浏览服务器</el-button>
                     </div>
                 </el-form-item>
 
@@ -1542,6 +1595,22 @@
                 const activeTab = ref('tasks');
                 const showExportDialog = ref(false);
                 const showSettingsDrawer = ref(false);
+
+                // 服务器文件浏览器状态
+                const showServerBrowser = ref(false);
+                const serverBrowserCurrent = ref('');
+                const serverBrowserParent = ref(null);
+                const serverBrowserItems = ref([]);
+                const serverBrowserLoading = ref(false);
+                const serverBrowserSelected = ref('');
+                const serverBrowserMode = ref('file'); // 'file' | 'folder'
+                let serverBrowserTarget = ''; // 选中后写入哪个字段
+                const serverBrowserTitle = computed(() =>
+                    serverBrowserMode.value === 'folder' ? '选择服务器目录' : '选择模型权重文件'
+                );
+
+                // 本地图片上传状态
+                const uploadingImages = ref(false);
                 const showCorrectionDialog = ref(false);
                 const activeCollapse = ref([]); // 默认不展开高级选项
                 const loadingImages = ref(false);
@@ -3630,6 +3699,143 @@
                     }
                 };
                 
+                // ── 服务器文件浏览器 ──────────────────────────────────────
+
+                const navigateDir = async (path) => {
+                    serverBrowserLoading.value = true;
+                    serverBrowserSelected.value = '';
+                    try {
+                        const params = path ? { path } : {};
+                        const res = await axios.get(API_BASE + '/system/browse-dir', { params });
+                        serverBrowserCurrent.value = res.data.current;
+                        serverBrowserParent.value = res.data.parent;
+                        serverBrowserItems.value = res.data.items;
+                    } catch (e) {
+                        ElMessage.error('浏览目录失败: ' + getErrorDetail(e));
+                    } finally {
+                        serverBrowserLoading.value = false;
+                    }
+                };
+
+                const selectServerFile = (path) => {
+                    serverBrowserSelected.value = path;
+                };
+
+                // 打开服务器浏览器（选模型文件）
+                const openServerBrowser = async () => {
+                    serverBrowserMode.value = 'file';
+                    serverBrowserTarget = 'model';
+                    serverBrowserSelected.value = '';
+                    showServerBrowser.value = true;
+                    await navigateDir('');
+                };
+
+                // 打开服务器浏览器（选目录，用于导出路径）
+                const openServerBrowserForFolder = async (target) => {
+                    serverBrowserMode.value = 'folder';
+                    serverBrowserTarget = target;
+                    serverBrowserSelected.value = '';
+                    showServerBrowser.value = true;
+                    await navigateDir('');
+                };
+
+                // 文件夹模式下选中某个目录
+                const selectServerFolder = (path) => {
+                    serverBrowserSelected.value = path;
+                };
+
+                // 点击浏览器列表项
+                const onBrowserItemClick = (item) => {
+                    if (item.type === 'dir') {
+                        navigateDir(item.path);
+                    } else if (serverBrowserMode.value === 'file') {
+                        selectServerFile(item.path);
+                    }
+                };
+
+                const confirmServerFile = () => {
+                    if (!serverBrowserSelected.value) return;
+                    const path = serverBrowserSelected.value;
+
+                    if (serverBrowserMode.value === 'file') {
+                        // 模型权重文件
+                        const exists = availableModels.value.some(m => m.path === path);
+                        if (!exists) {
+                            availableModels.value.push({
+                                path,
+                                name: path.split('\\').pop().split('/').pop(),
+                                size_mb: '?',
+                                modified_time: new Date().toISOString()
+                            });
+                        }
+                        newTaskForm.model_path = path;
+                        ElMessage.success('已选择模型: ' + path.split('\\').pop().split('/').pop());
+                    } else {
+                        // 服务器目录（导出路径）
+                        if (serverBrowserTarget === 'export') {
+                            exportForm.output_dir = path;
+                        }
+                        ElMessage.success('已选择目录: ' + path);
+                    }
+                    showServerBrowser.value = false;
+                };
+
+                // ── 本地图片上传 ──────────────────────────────────────────
+
+                const triggerLocalFileInput = () => {
+                    const input = document.getElementById('localFileInput');
+                    input.value = '';
+                    input.click();
+                };
+
+                const triggerLocalFolderInput = () => {
+                    const input = document.getElementById('localFolderInput');
+                    input.value = '';
+                    input.click();
+                };
+
+                const onLocalFilesSelected = async (event) => {
+                    const files = event.target.files;
+                    if (!files || files.length === 0) return;
+
+                    const loading = ElLoading.service({ text: `正在上传 ${files.length} 个文件...` });
+                    uploadingImages.value = true;
+                    try {
+                        const formData = new FormData();
+                        for (const f of files) {
+                            formData.append('files', f);
+                        }
+                        const res = await axios.post(API_BASE + '/system/upload-images', formData, {
+                            headers: { 'Content-Type': 'multipart/form-data' }
+                        });
+
+                        const currentSet = new Set(newTaskForm_fileList.value.map(item => item.path));
+                        let addedCount = 0;
+                        (res.data.paths || []).forEach(p => {
+                            if (p && !currentSet.has(p)) {
+                                newTaskForm_fileList.value.push({
+                                    path: p,
+                                    settings: { brightness: 100, contrast: 100, exposure: 0, perspective_points: [] },
+                                    selected: true
+                                });
+                                addedCount++;
+                            }
+                        });
+
+                        if (addedCount > 0) {
+                            ElMessage.success(`已上传并添加 ${addedCount} 个文件`);
+                        } else {
+                            ElMessage.info('没有新增文件（可能已全部存在于列表中）');
+                        }
+                    } catch (e) {
+                        ElMessage.error('上传文件失败: ' + getErrorDetail(e));
+                    } finally {
+                        loading.close();
+                        uploadingImages.value = false;
+                    }
+                };
+
+                // ── 原有系统文件选择器（保留作为备用）─────────────────────
                 // System Picker Methods
                 const pickFolder = async (target = 'source') => {
                     try {
@@ -4966,6 +5172,26 @@
 
                 // Lifecycle
                 onMounted(async () => {
+                    // 创建隐藏的本地文件选择 input（避免在 Vue 模板里使用非标准属性 webkitdirectory）
+                    const fileInput = document.createElement('input');
+                    fileInput.type = 'file';
+                    fileInput.id = 'localFileInput';
+                    fileInput.accept = '.jpg,.jpeg,.png,.bmp';
+                    fileInput.multiple = true;
+                    fileInput.style.display = 'none';
+                    fileInput.addEventListener('change', (e) => onLocalFilesSelected(e));
+                    document.body.appendChild(fileInput);
+
+                    const folderInput = document.createElement('input');
+                    folderInput.type = 'file';
+                    folderInput.id = 'localFolderInput';
+                    folderInput.accept = '.jpg,.jpeg,.png,.bmp';
+                    folderInput.multiple = true;
+                    folderInput.webkitdirectory = true;
+                    folderInput.style.display = 'none';
+                    folderInput.addEventListener('change', (e) => onLocalFilesSelected(e));
+                    document.body.appendChild(folderInput);
+
                     await fetchSystemStatus();
                     await fetchModels();
                     await fetchTasks();
@@ -5059,7 +5285,14 @@
                     selectDetectionOnCanvas, fitCanvas, toggleDragMode, isDragMode,
                     getStatusType, getStatusText, formatTime,
                     pickFolder, pickFile, pickFiles, 
-                    pickFilesAppend, pickFolderAppend, clearFileList, removeFileFromList, // Export these
+                    pickFilesAppend, pickFolderAppend, clearFileList, removeFileFromList,
+                    // 服务器文件浏览器
+                    showServerBrowser, serverBrowserCurrent, serverBrowserParent,
+                    serverBrowserItems, serverBrowserLoading, serverBrowserSelected, serverBrowserMode, serverBrowserTitle,
+                    openServerBrowser, openServerBrowserForFolder,
+                    navigateDir, selectServerFile, selectServerFolder, confirmServerFile, onBrowserItemClick,
+                    // 本地图片上传
+                    uploadingImages, triggerLocalFileInput, triggerLocalFolderInput, onLocalFilesSelected,
                     calculateProgress, deleteTask,
                     
                     showCorrectionDialog, correctionPoints, correcting, correctionImageList, currentCorrectionIndex,
