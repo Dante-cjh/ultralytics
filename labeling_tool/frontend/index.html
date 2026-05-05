@@ -348,6 +348,8 @@
             display: inline-block;
             width: 100%;
             height: 100%;
+            transform-origin: center center;
+            user-select: none;
         }
         .preview-image-wrapper img {
             width: 100%;
@@ -369,6 +371,17 @@
         }
         .preview-det-box.highlighted {
             animation: det-pulse 1s ease-in-out infinite;
+        }
+        .preview-baseline {
+            position: absolute;
+            pointer-events: none;
+            z-index: 8;
+        }
+        .preview-baseline.vertical {
+            border-left: 2px dashed #E6A23C;
+        }
+        .preview-baseline.horizontal {
+            border-top: 2px dashed #E6A23C;
         }
         @keyframes det-pulse {
             0%, 100% { opacity: 1; }
@@ -942,13 +955,27 @@
                 <div class="preview-cell">
                     <div class="preview-cell-header">
                         <el-icon><Picture /></el-icon> 检测结果预览
+                        <div style="margin-left:auto;display:flex;align-items:center;gap:8px;">
+                            <span style="font-size:12px;color:#909399;font-weight:400;">滚轮缩放 · 空格拖动</span>
+                            <el-button circle size="small" icon="FullScreen" @click="resetPreviewImageView"></el-button>
+                        </div>
                     </div>
-                    <div class="preview-cell-body" ref="previewImageContainer" style="overflow: hidden;">
+                    <div class="preview-cell-body" ref="previewImageContainer" style="overflow: hidden;"
+                         @wheel.prevent="onPreviewWheel"
+                         @mousedown="onPreviewMouseDown"
+                         @mousemove="onPreviewMouseMove"
+                         @mouseup="onPreviewMouseUp"
+                         @mouseleave="onPreviewMouseUp">
                         <div v-if="!currentImage" style="display:flex;align-items:center;justify-content:center;height:100%;color:#909399;">
                             请选择图片
                         </div>
-                        <div v-else class="preview-image-wrapper" ref="previewImgWrapper">
+                        <div v-else class="preview-image-wrapper" ref="previewImgWrapper" :style="previewImageViewportStyle">
                             <img :src="'/api/file/' + encodeURIComponent(currentImage.file_path)" @load="onPreviewImageLoad" ref="previewImgEl" style="display: block;" />
+                            <div v-if="previewBaselineStyle.display !== 'none'"
+                                 class="preview-baseline"
+                                 :class="analysisOrientation === 'vertical' ? 'vertical' : 'horizontal'"
+                                 :style="previewBaselineStyle">
+                            </div>
                             <div v-for="det in filteredDetections" :key="'pbox-' + det.id + '-' + previewLayoutVersion"
                                  class="preview-det-box"
                                  :class="{ highlighted: highlightedDetId === det.id }"
@@ -1480,6 +1507,9 @@
                         <el-button v-if="autoStitchedPath" type="success" @click="acceptAutoStitch" size="default" icon="CircleCheckFilled" style="padding: 0 24px;">
                             直接使用自动拼接
                         </el-button>
+                        <el-button type="info" plain @click="fitStitchCanvasToObjects" size="default" icon="FullScreen" style="padding: 0 20px;">
+                            适应全部图片
+                        </el-button>
                         <el-button :type="stitchExportRect ? 'warning' : 'info'" plain @click="toggleExportArea" size="default" icon="Crop" style="padding: 0 20px;">
                             {{ stitchExportRect ? '移除导出区域' : '选取导出区域' }}
                         </el-button>
@@ -1843,6 +1873,10 @@
 
                 const applyCurrentSettings = async () => {
                     if (!previewImagePath.value || !currentImageSettings.value) return;
+
+                    if (previewMode.value === 'perspective' && pImageObj) {
+                        savePerspectivePoints(pImageObj);
+                    }
 
                     // 如果处于透视校正模式，且有4个点，则执行校正
                     if (previewMode.value === 'perspective' && currentImageSettings.value.perspective_points && currentImageSettings.value.perspective_points.length === 4) {
@@ -2365,6 +2399,41 @@
                     });
                 };
 
+                const fitStitchCanvasToObjects = (padding = 80) => {
+                    if (!stitchCanvas) return;
+
+                    const objects = stitchCanvas.getObjects().filter(obj => !obj.customIsExport);
+                    if (objects.length === 0) return;
+
+                    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+                    objects.forEach(obj => {
+                        obj.setCoords();
+                        const rect = obj.getBoundingRect(true);
+                        minX = Math.min(minX, rect.left);
+                        minY = Math.min(minY, rect.top);
+                        maxX = Math.max(maxX, rect.left + rect.width);
+                        maxY = Math.max(maxY, rect.top + rect.height);
+                    });
+
+                    const contentWidth = maxX - minX;
+                    const contentHeight = maxY - minY;
+                    if (!isFinite(contentWidth) || !isFinite(contentHeight) || contentWidth <= 0 || contentHeight <= 0) return;
+
+                    const availableWidth = Math.max(1, stitchCanvas.getWidth() - padding * 2);
+                    const availableHeight = Math.max(1, stitchCanvas.getHeight() - padding * 2);
+                    let zoom = Math.min(availableWidth / contentWidth, availableHeight / contentHeight);
+                    zoom = Math.max(0.05, Math.min(zoom, 1));
+
+                    const centerX = minX + contentWidth / 2;
+                    const centerY = minY + contentHeight / 2;
+                    stitchCanvas.setViewportTransform([
+                        zoom, 0, 0, zoom,
+                        stitchCanvas.getWidth() / 2 - centerX * zoom,
+                        stitchCanvas.getHeight() / 2 - centerY * zoom
+                    ]);
+                    stitchCanvas.requestRenderAll();
+                };
+
                 const closeStitchDialog = () => {
                     showStitchDialog.value = false;
                     stitchRefMode.value = null;
@@ -2502,8 +2571,8 @@
                                         });
                                         stitchCanvas.add(obj);
                                     });
-                                    stitchCanvas.setZoom(globalInitialScale);
-                                    stitchCanvas.absolutePan(new fabric.Point(0, 0));
+                                    stitchImages.value = loadedImgs.slice();
+                                    fitStitchCanvasToObjects();
                                     stitchCanvas.requestRenderAll();
                                 }
                             }, { crossOrigin: 'anonymous' });
@@ -3051,6 +3120,12 @@
                 const previewImgNatW = ref(0);
                 const previewImgNatH = ref(0);
                 const previewLayoutVersion = ref(0);
+                const previewResultZoom = ref(1);
+                const previewResultPanX = ref(0);
+                const previewResultPanY = ref(0);
+                let isPreviewResultDragging = false;
+                let previewResultDragLastX = 0;
+                let previewResultDragLastY = 0;
                 let scatterChart = null;
                 let previewResizeObserver = null;
 
@@ -3092,6 +3167,89 @@
                         return analysisOrientation.value === 'vertical' ? rw : rh;
                     }
                     return analysisOrientation.value === 'vertical' ? w : h;
+                });
+
+                const previewImageViewportStyle = computed(() => ({
+                    transform: `translate(${previewResultPanX.value}px, ${previewResultPanY.value}px) scale(${previewResultZoom.value})`,
+                    cursor: isSpacePressed.value || isPreviewResultDragging ? (isPreviewResultDragging ? 'grabbing' : 'grab') : 'default'
+                }));
+
+                const resetPreviewImageView = () => {
+                    previewResultZoom.value = 1;
+                    previewResultPanX.value = 0;
+                    previewResultPanY.value = 0;
+                    isPreviewResultDragging = false;
+                    bumpPreviewLayout();
+                };
+
+                const onPreviewWheel = (e) => {
+                    if (!currentImage.value) return;
+                    let nextZoom = previewResultZoom.value * Math.pow(0.999, e.deltaY);
+                    nextZoom = Math.max(0.2, Math.min(nextZoom, 20));
+                    previewResultZoom.value = nextZoom;
+                };
+
+                const onPreviewMouseDown = (e) => {
+                    if (!currentImage.value || e.button !== 0 || !(e.altKey || isSpacePressed.value)) return;
+                    isPreviewResultDragging = true;
+                    previewResultDragLastX = e.clientX;
+                    previewResultDragLastY = e.clientY;
+                    e.preventDefault();
+                };
+
+                const onPreviewMouseMove = (e) => {
+                    if (!isPreviewResultDragging) return;
+                    previewResultPanX.value += e.clientX - previewResultDragLastX;
+                    previewResultPanY.value += e.clientY - previewResultDragLastY;
+                    previewResultDragLastX = e.clientX;
+                    previewResultDragLastY = e.clientY;
+                };
+
+                const onPreviewMouseUp = () => {
+                    isPreviewResultDragging = false;
+                };
+
+                const getPreviewRenderedImageRect = () => {
+                    void previewLayoutVersion.value;
+                    const el = previewImgEl.value;
+                    const nw = previewImgNatW.value;
+                    const nh = previewImgNatH.value;
+                    if (!el || !nw || !nh) return null;
+                    const dispW = el.clientWidth;
+                    const dispH = el.clientHeight;
+                    if (dispW < 2 || dispH < 2) return null;
+                    const imgAspect = nw / nh;
+                    const elAspect = dispW / dispH;
+                    let width, height, left, top;
+                    if (imgAspect > elAspect) {
+                        width = dispW;
+                        height = dispW / imgAspect;
+                        left = 0;
+                        top = (dispH - height) / 2;
+                    } else {
+                        height = dispH;
+                        width = dispH * imgAspect;
+                        left = (dispW - width) / 2;
+                        top = 0;
+                    }
+                    return { left, top, width, height, nw, nh };
+                };
+
+                const previewBaselineStyle = computed(() => {
+                    const rect = getPreviewRenderedImageRect();
+                    if (!rect) return { display: 'none' };
+                    const rw = Number(analysisRealWidth.value);
+                    const rh = Number(analysisRealHeight.value);
+                    const useReal = detCoordMode.value === 'real' && rw > 0 && rh > 0;
+                    const baseline = Number(analysisBaseline.value) || 0;
+                    if (analysisOrientation.value === 'vertical') {
+                        const maxX = useReal ? rw : rect.nw;
+                        const x = rect.left + (Math.max(0, Math.min(baseline, maxX)) / maxX) * rect.width;
+                        return { left: x + 'px', top: rect.top + 'px', height: rect.height + 'px' };
+                    }
+                    const maxY = useReal ? rh : rect.nh;
+                    const y = rect.top + rect.height - (Math.max(0, Math.min(baseline, maxY)) / maxY) * rect.height;
+                    return { top: y + 'px', left: rect.left + 'px', width: rect.width + 'px' };
                 });
 
                 const hasRealDimensions = computed(() => {
@@ -3144,39 +3302,20 @@
                 const onPreviewImageLoad = (e) => {
                     previewImgNatW.value = e.target.naturalWidth;
                     previewImgNatH.value = e.target.naturalHeight;
+                    resetPreviewImageView();
                     bumpPreviewLayout();
                     nextTick(() => updateScatterChart(false));
                 };
 
                 const getPreviewBoxStyle = (det) => {
-                    void previewLayoutVersion.value;
-                    const el = previewImgEl.value;
-                    const nw = previewImgNatW.value;
-                    const nh = previewImgNatH.value;
-                    if (!el || !nw || !nh) return { display: 'none' };
-                    const dispW = el.clientWidth;
-                    const dispH = el.clientHeight;
-                    if (dispW < 2 || dispH < 2) return { display: 'none' };
-                    const imgAspect = nw / nh;
-                    const elAspect = dispW / dispH;
-                    let renderW, renderH, offsetX, offsetY;
-                    if (imgAspect > elAspect) {
-                        renderW = dispW;
-                        renderH = dispW / imgAspect;
-                        offsetX = 0;
-                        offsetY = (dispH - renderH) / 2;
-                    } else {
-                        renderH = dispH;
-                        renderW = dispH * imgAspect;
-                        offsetX = (dispW - renderW) / 2;
-                        offsetY = 0;
-                    }
-                    const sx = renderW / nw;
-                    const sy = renderH / nh;
-                    const bw = (Number(det.width) || 0) * nw * sx;
-                    const bh = (Number(det.height) || 0) * nh * sy;
-                    const bx = ((Number(det.x_center) || 0) * nw * sx) - bw / 2 + offsetX;
-                    const by = ((Number(det.y_center) || 0) * nh * sy) - bh / 2 + offsetY;
+                    const rect = getPreviewRenderedImageRect();
+                    if (!rect) return { display: 'none' };
+                    const sx = rect.width / rect.nw;
+                    const sy = rect.height / rect.nh;
+                    const bw = (Number(det.width) || 0) * rect.nw * sx;
+                    const bh = (Number(det.height) || 0) * rect.nh * sy;
+                    const bx = ((Number(det.x_center) || 0) * rect.nw * sx) - bw / 2 + rect.left;
+                    const by = ((Number(det.y_center) || 0) * rect.nh * sy) - bh / 2 + rect.top;
                     return {
                         left: bx + 'px', top: by + 'px',
                         width: bw + 'px', height: bh + 'px',
@@ -3250,6 +3389,28 @@
                     updateScatterChart(false);
                 };
 
+                const getScatterAspectGrid = (plotW, plotH) => {
+                    const dom = document.getElementById('scatter-chart');
+                    const chartW = dom?.clientWidth || 1;
+                    const chartH = dom?.clientHeight || 1;
+                    const margin = { top: 40, bottom: 48, left: 58, right: 40 };
+                    const availableW = Math.max(1, chartW - margin.left - margin.right);
+                    const availableH = Math.max(1, chartH - margin.top - margin.bottom);
+                    const aspect = (Number(plotW) || 1) / (Number(plotH) || 1);
+                    let gridW = availableW;
+                    let gridH = gridW / aspect;
+                    if (gridH > availableH) {
+                        gridH = availableH;
+                        gridW = gridH * aspect;
+                    }
+                    return {
+                        top: margin.top,
+                        left: Math.round((chartW - gridW) / 2),
+                        width: Math.round(gridW),
+                        height: Math.round(gridH)
+                    };
+                };
+
                 const updateScatterChart = (highlightOnly = false, hideMarkLine = false) => {
                     if (!scatterChart || !currentImage.value) return;
                     const onlyHighlight = highlightOnly === true;
@@ -3293,15 +3454,21 @@
                             data: markLineData
                         };
                     }
+                    const axisMaxX = useReal ? Number(plotW.toFixed(4)) : plotW;
+                    const axisMaxY = useReal ? Number(plotH.toFixed(4)) : plotH;
                     scatterChart.setOption({
                         tooltip: {
                             trigger: 'item',
                             formatter: (p) => `${p.seriesName}<br/>X: ${p.value[0]}, Y: ${p.value[1]}`
                         },
                         legend: { top: 4, textStyle: { fontSize: 11 } },
-                        grid: { top: 36, bottom: 36, left: 50, right: 35 },
-                        xAxis: { type: 'value', name: 'X', max: useReal ? Number(plotW.toFixed(4)) : plotW, nameTextStyle: { fontSize: 11 } },
-                        yAxis: { type: 'value', name: 'Y', max: useReal ? Number(plotH.toFixed(4)) : plotH, nameTextStyle: { fontSize: 11 } },
+                        grid: getScatterAspectGrid(plotW, plotH),
+                        dataZoom: [
+                            { type: 'inside', xAxisIndex: 0, filterMode: 'none', zoomOnMouseWheel: true, moveOnMouseMove: true, moveOnMouseWheel: false },
+                            { type: 'inside', yAxisIndex: 0, filterMode: 'none', zoomOnMouseWheel: true, moveOnMouseMove: true, moveOnMouseWheel: false }
+                        ],
+                        xAxis: { type: 'value', name: 'X', min: 0, max: axisMaxX, nameTextStyle: { fontSize: 11 } },
+                        yAxis: { type: 'value', name: 'Y', min: 0, max: axisMaxY, nameTextStyle: { fontSize: 11 } },
                         series: series
                     }, { notMerge: true });
                 };
@@ -3470,7 +3637,10 @@
                                 if (previewResizeObserver) previewResizeObserver.disconnect();
                                 previewResizeObserver = new ResizeObserver(() => {
                                     bumpPreviewLayout();
-                                    if (scatterChart) scatterChart.resize();
+                                    if (scatterChart) {
+                                        scatterChart.resize();
+                                        updateScatterChart(false);
+                                    }
                                 });
                                 previewResizeObserver.observe(previewImgWrapper.value);
                             }
@@ -3507,6 +3677,7 @@
 
                 watch(currentImage, () => {
                     highlightedDetId.value = null;
+                    resetPreviewImageView();
                     if (currentImage.value) {
                         analysisRealWidth.value = currentImage.value.settings?.real_width || 0;
                         analysisRealHeight.value = currentImage.value.settings?.real_height || 0;
@@ -4075,17 +4246,19 @@
                     pLines = [];
                     if (pPolygon) { pCanvas.remove(pPolygon); pPolygon = null; }
 
-                    const imgRect = img.getBoundingRect();
+                    const imgTopLeft = img.getPointByOrigin('left', 'top');
+                    const imgScaledWidth = img.getScaledWidth();
+                    const imgScaledHeight = img.getScaledHeight();
                     
                     // Create default rectangle points (e.g., 20% margin from edges)
-                    const marginX = imgRect.width * 0.2;
-                    const marginY = imgRect.height * 0.2;
+                    const marginX = imgScaledWidth * 0.2;
+                    const marginY = imgScaledHeight * 0.2;
                     
                     const defaultPoints = [
-                        { x: imgRect.left + marginX, y: imgRect.top + marginY }, // Top-Left
-                        { x: imgRect.left + imgRect.width - marginX, y: imgRect.top + marginY }, // Top-Right
-                        { x: imgRect.left + imgRect.width - marginX, y: imgRect.top + imgRect.height - marginY }, // Bottom-Right
-                        { x: imgRect.left + marginX, y: imgRect.top + imgRect.height - marginY } // Bottom-Left
+                        { x: imgTopLeft.x + marginX, y: imgTopLeft.y + marginY }, // Top-Left
+                        { x: imgTopLeft.x + imgScaledWidth - marginX, y: imgTopLeft.y + marginY }, // Top-Right
+                        { x: imgTopLeft.x + imgScaledWidth - marginX, y: imgTopLeft.y + imgScaledHeight - marginY }, // Bottom-Right
+                        { x: imgTopLeft.x + marginX, y: imgTopLeft.y + imgScaledHeight - marginY } // Bottom-Left
                     ];
 
                     defaultPoints.forEach((pt, index) => {
@@ -4133,6 +4306,7 @@
                     pCanvas.on('object:moving', (e) => {
                         if (e.target && e.target.type === 'circle') {
                             updateLinesAndPolygon();
+                            savePerspectivePoints(img);
                         }
                     });
 
@@ -4168,14 +4342,14 @@
                 const savePerspectivePoints = (img, scale) => {
                     if (pPoints.length !== 4 || !currentImageSettings.value) return;
                     
-                    const imgRect = img.getBoundingRect();
+                    const imgTopLeft = img.getPointByOrigin('left', 'top');
+                    const scaleX = img.width / img.getScaledWidth();
+                    const scaleY = img.height / img.getScaledHeight();
                     
                     const truePoints = pPoints.map(p => {
-                        const relX = p.left - imgRect.left;
-                        const relY = p.top - imgRect.top;
-                        
-                        const scaleX = img.width / imgRect.width;
-                        const scaleY = img.height / imgRect.height;
+                        const center = p.getCenterPoint();
+                        const relX = center.x - imgTopLeft.x;
+                        const relY = center.y - imgTopLeft.y;
                         
                         let trueX = relX * scaleX;
                         let trueY = relY * scaleY;
@@ -4194,14 +4368,14 @@
                     pLines = [];
                     if (pPolygon) { pCanvas.remove(pPolygon); pPolygon = null; }
                     
-                    const imgRect = img.getBoundingRect();
-                    const scaleX = imgRect.width / img.width;
-                    const scaleY = imgRect.height / img.height;
+                    const imgTopLeft = img.getPointByOrigin('left', 'top');
+                    const scaleX = img.getScaledWidth() / img.width;
+                    const scaleY = img.getScaledHeight() / img.height;
                     
                     const canvasPoints = truePoints.map(tp => {
                         return {
-                            x: imgRect.left + (tp[0] * scaleX),
-                            y: imgRect.top + (tp[1] * scaleY)
+                            x: imgTopLeft.x + (tp[0] * scaleX),
+                            y: imgTopLeft.y + (tp[1] * scaleY)
                         };
                     });
                     
@@ -4246,7 +4420,10 @@
                     img.sendToBack();
                     
                     pCanvas.on('object:moving', (e) => {
-                        if (e.target && e.target.type === 'circle') updateLinesAndPolygon();
+                        if (e.target && e.target.type === 'circle') {
+                            updateLinesAndPolygon();
+                            savePerspectivePoints(img);
+                        }
                     });
                     pCanvas.on('object:modified', (e) => {
                         if (e.target && e.target.type === 'circle') savePerspectivePoints(img, scale);
@@ -5264,6 +5441,8 @@
                     filterClass, filteredDetections, getClassColor,
                     labelingMode, highlightedDetId, previewLayoutVersion,
                     previewImgEl, previewImgWrapper, previewImageContainer, detTableRef,
+                    previewImageViewportStyle, previewBaselineStyle, resetPreviewImageView,
+                    onPreviewWheel, onPreviewMouseDown, onPreviewMouseMove, onPreviewMouseUp,
                     analysisOrientation, analysisBaseline, analysisBaselineMax,
                     analysisRealWidth, analysisRealHeight, analysisDistance, analysisResult, analyzingBallistics,
                     detCoordMode, hasRealDimensions,
@@ -5271,7 +5450,7 @@
                     detTableRowClass, onDetTableRowClick,
                     updateScatterChart, calculateAnalysis, exportAnalysisCSV, exportDistributionChart,
 
-                    fetchModels, fetchTasks, selectTask, selectImage, openStitching, closeStitchDialog, submitManualStitch,
+                    fetchModels, fetchTasks, selectTask, selectImage, openStitching, closeStitchDialog, submitManualStitch, fitStitchCanvasToObjects,
                     updateStitchImageOpacity, updateStitchImageAngle, rotateStitchImage, bringStitchImageForward, sendStitchImageBackward,
                     submitNewTask, submitExport, updateSelectedTasks,
                     updateDetectionFromCanvas, deleteDetection, deleteSelected,  

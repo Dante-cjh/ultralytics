@@ -333,6 +333,8 @@
             display: inline-block;
             width: 100%;
             height: 100%;
+            transform-origin: center center;
+            user-select: none;
         }
         .preview-image-wrapper img {
             width: 100%;
@@ -354,6 +356,17 @@
         }
         .preview-det-box.highlighted {
             animation: det-pulse 1s ease-in-out infinite;
+        }
+        .preview-baseline {
+            position: absolute;
+            pointer-events: none;
+            z-index: 8;
+        }
+        .preview-baseline.vertical {
+            border-left: 2px dashed #E6A23C;
+        }
+        .preview-baseline.horizontal {
+            border-top: 2px dashed #E6A23C;
         }
         @keyframes det-pulse {
             0%, 100% { opacity: 1; }
@@ -927,13 +940,27 @@
                 <div class="preview-cell">
                     <div class="preview-cell-header">
                         <el-icon><Picture /></el-icon> 检测结果预览
+                        <div style="margin-left:auto;display:flex;align-items:center;gap:8px;">
+                            <span style="font-size:12px;color:#909399;font-weight:400;">滚轮缩放 · 空格拖动</span>
+                            <el-button circle size="small" icon="FullScreen" @click="resetPreviewImageView"></el-button>
+                        </div>
                     </div>
-                    <div class="preview-cell-body" ref="previewImageContainer" style="overflow: hidden;">
+                    <div class="preview-cell-body" ref="previewImageContainer" style="overflow: hidden;"
+                         @wheel.prevent="onPreviewWheel"
+                         @mousedown="onPreviewMouseDown"
+                         @mousemove="onPreviewMouseMove"
+                         @mouseup="onPreviewMouseUp"
+                         @mouseleave="onPreviewMouseUp">
                         <div v-if="!currentImage" style="display:flex;align-items:center;justify-content:center;height:100%;color:#909399;">
                             请选择图片
                         </div>
-                        <div v-else class="preview-image-wrapper" ref="previewImgWrapper">
+                        <div v-else class="preview-image-wrapper" ref="previewImgWrapper" :style="previewImageViewportStyle">
                             <img :src="'/api/file/' + encodeURIComponent(currentImage.file_path)" @load="onPreviewImageLoad" ref="previewImgEl" style="display: block;" />
+                            <div v-if="previewBaselineStyle.display !== 'none'"
+                                 class="preview-baseline"
+                                 :class="analysisOrientation === 'vertical' ? 'vertical' : 'horizontal'"
+                                 :style="previewBaselineStyle">
+                            </div>
                             <div v-for="det in filteredDetections" :key="'pbox-' + det.id + '-' + previewLayoutVersion"
                                  class="preview-det-box"
                                  :class="{ highlighted: highlightedDetId === det.id }"
@@ -1427,6 +1454,9 @@
                         <el-button v-if="autoStitchedPath" type="success" @click="acceptAutoStitch" size="default" icon="CircleCheckFilled" style="padding: 0 24px;">
                             直接使用自动拼接
                         </el-button>
+                        <el-button type="info" plain @click="fitStitchCanvasToObjects" size="default" icon="FullScreen" style="padding: 0 20px;">
+                            适应全部图片
+                        </el-button>
                         <el-button :type="stitchExportRect ? 'warning' : 'info'" plain @click="toggleExportArea" size="default" icon="Crop" style="padding: 0 20px;">
                             {{ stitchExportRect ? '移除导出区域' : '选取导出区域' }}
                         </el-button>
@@ -1838,6 +1868,9 @@ var App = {
               }
               return _context.a(2);
             case 1:
+              if (previewMode.value === 'perspective' && pImageObj) {
+                savePerspectivePoints(pImageObj);
+              }
               if (!(previewMode.value === 'perspective' && currentImageSettings.value.perspective_points && currentImageSettings.value.perspective_points.length === 4)) {
                 _context.n = 7;
                 break;
@@ -2441,6 +2474,37 @@ var App = {
         initStitchCanvas(paths, autoStitchedPath);
       });
     };
+    var fitStitchCanvasToObjects = function fitStitchCanvasToObjects() {
+      var padding = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : 80;
+      if (!stitchCanvas) return;
+      var objects = stitchCanvas.getObjects().filter(function (obj) {
+        return !obj.customIsExport;
+      });
+      if (objects.length === 0) return;
+      var minX = Infinity,
+        minY = Infinity,
+        maxX = -Infinity,
+        maxY = -Infinity;
+      objects.forEach(function (obj) {
+        obj.setCoords();
+        var rect = obj.getBoundingRect(true);
+        minX = Math.min(minX, rect.left);
+        minY = Math.min(minY, rect.top);
+        maxX = Math.max(maxX, rect.left + rect.width);
+        maxY = Math.max(maxY, rect.top + rect.height);
+      });
+      var contentWidth = maxX - minX;
+      var contentHeight = maxY - minY;
+      if (!isFinite(contentWidth) || !isFinite(contentHeight) || contentWidth <= 0 || contentHeight <= 0) return;
+      var availableWidth = Math.max(1, stitchCanvas.getWidth() - padding * 2);
+      var availableHeight = Math.max(1, stitchCanvas.getHeight() - padding * 2);
+      var zoom = Math.min(availableWidth / contentWidth, availableHeight / contentHeight);
+      zoom = Math.max(0.05, Math.min(zoom, 1));
+      var centerX = minX + contentWidth / 2;
+      var centerY = minY + contentHeight / 2;
+      stitchCanvas.setViewportTransform([zoom, 0, 0, zoom, stitchCanvas.getWidth() / 2 - centerX * zoom, stitchCanvas.getHeight() / 2 - centerY * zoom]);
+      stitchCanvas.requestRenderAll();
+    };
     var closeStitchDialog = function closeStitchDialog() {
       showStitchDialog.value = false;
       stitchRefMode.value = null;
@@ -2570,8 +2634,8 @@ var App = {
                 });
                 stitchCanvas.add(obj);
               });
-              stitchCanvas.setZoom(globalInitialScale);
-              stitchCanvas.absolutePan(new fabric.Point(0, 0));
+              stitchImages.value = loadedImgs.slice();
+              fitStitchCanvasToObjects();
               stitchCanvas.requestRenderAll();
             }
           }, {
@@ -3166,6 +3230,12 @@ var App = {
     var previewImgNatW = ref(0);
     var previewImgNatH = ref(0);
     var previewLayoutVersion = ref(0);
+    var previewResultZoom = ref(1);
+    var previewResultPanX = ref(0);
+    var previewResultPanY = ref(0);
+    var isPreviewResultDragging = false;
+    var previewResultDragLastX = 0;
+    var previewResultDragLastY = 0;
     var scatterChart = null;
     var previewResizeObserver = null;
     var bumpPreviewLayout = function bumpPreviewLayout() {
@@ -3203,6 +3273,100 @@ var App = {
         return analysisOrientation.value === 'vertical' ? rw : rh;
       }
       return analysisOrientation.value === 'vertical' ? w : h;
+    });
+    var previewImageViewportStyle = computed(function () {
+      return {
+        transform: "translate(".concat(previewResultPanX.value, "px, ").concat(previewResultPanY.value, "px) scale(").concat(previewResultZoom.value, ")"),
+        cursor: isSpacePressed.value || isPreviewResultDragging ? isPreviewResultDragging ? 'grabbing' : 'grab' : 'default'
+      };
+    });
+    var resetPreviewImageView = function resetPreviewImageView() {
+      previewResultZoom.value = 1;
+      previewResultPanX.value = 0;
+      previewResultPanY.value = 0;
+      isPreviewResultDragging = false;
+      bumpPreviewLayout();
+    };
+    var onPreviewWheel = function onPreviewWheel(e) {
+      if (!currentImage.value) return;
+      var nextZoom = previewResultZoom.value * Math.pow(0.999, e.deltaY);
+      nextZoom = Math.max(0.2, Math.min(nextZoom, 20));
+      previewResultZoom.value = nextZoom;
+    };
+    var onPreviewMouseDown = function onPreviewMouseDown(e) {
+      if (!currentImage.value || e.button !== 0 || !(e.altKey || isSpacePressed.value)) return;
+      isPreviewResultDragging = true;
+      previewResultDragLastX = e.clientX;
+      previewResultDragLastY = e.clientY;
+      e.preventDefault();
+    };
+    var onPreviewMouseMove = function onPreviewMouseMove(e) {
+      if (!isPreviewResultDragging) return;
+      previewResultPanX.value += e.clientX - previewResultDragLastX;
+      previewResultPanY.value += e.clientY - previewResultDragLastY;
+      previewResultDragLastX = e.clientX;
+      previewResultDragLastY = e.clientY;
+    };
+    var onPreviewMouseUp = function onPreviewMouseUp() {
+      isPreviewResultDragging = false;
+    };
+    var getPreviewRenderedImageRect = function getPreviewRenderedImageRect() {
+      void previewLayoutVersion.value;
+      var el = previewImgEl.value;
+      var nw = previewImgNatW.value;
+      var nh = previewImgNatH.value;
+      if (!el || !nw || !nh) return null;
+      var dispW = el.clientWidth;
+      var dispH = el.clientHeight;
+      if (dispW < 2 || dispH < 2) return null;
+      var imgAspect = nw / nh;
+      var elAspect = dispW / dispH;
+      var width, height, left, top;
+      if (imgAspect > elAspect) {
+        width = dispW;
+        height = dispW / imgAspect;
+        left = 0;
+        top = (dispH - height) / 2;
+      } else {
+        height = dispH;
+        width = dispH * imgAspect;
+        left = (dispW - width) / 2;
+        top = 0;
+      }
+      return {
+        left: left,
+        top: top,
+        width: width,
+        height: height,
+        nw: nw,
+        nh: nh
+      };
+    };
+    var previewBaselineStyle = computed(function () {
+      var rect = getPreviewRenderedImageRect();
+      if (!rect) return {
+        display: 'none'
+      };
+      var rw = Number(analysisRealWidth.value);
+      var rh = Number(analysisRealHeight.value);
+      var useReal = detCoordMode.value === 'real' && rw > 0 && rh > 0;
+      var baseline = Number(analysisBaseline.value) || 0;
+      if (analysisOrientation.value === 'vertical') {
+        var maxX = useReal ? rw : rect.nw;
+        var x = rect.left + Math.max(0, Math.min(baseline, maxX)) / maxX * rect.width;
+        return {
+          left: x + 'px',
+          top: rect.top + 'px',
+          height: rect.height + 'px'
+        };
+      }
+      var maxY = useReal ? rh : rect.nh;
+      var y = rect.top + rect.height - Math.max(0, Math.min(baseline, maxY)) / maxY * rect.height;
+      return {
+        top: y + 'px',
+        left: rect.left + 'px',
+        width: rect.width + 'px'
+      };
     });
     var hasRealDimensions = computed(function () {
       var _currentImage$value4;
@@ -3251,44 +3415,23 @@ var App = {
     var onPreviewImageLoad = function onPreviewImageLoad(e) {
       previewImgNatW.value = e.target.naturalWidth;
       previewImgNatH.value = e.target.naturalHeight;
+      resetPreviewImageView();
       bumpPreviewLayout();
       nextTick(function () {
         return updateScatterChart(false);
       });
     };
     var getPreviewBoxStyle = function getPreviewBoxStyle(det) {
-      void previewLayoutVersion.value;
-      var el = previewImgEl.value;
-      var nw = previewImgNatW.value;
-      var nh = previewImgNatH.value;
-      if (!el || !nw || !nh) return {
+      var rect = getPreviewRenderedImageRect();
+      if (!rect) return {
         display: 'none'
       };
-      var dispW = el.clientWidth;
-      var dispH = el.clientHeight;
-      if (dispW < 2 || dispH < 2) return {
-        display: 'none'
-      };
-      var imgAspect = nw / nh;
-      var elAspect = dispW / dispH;
-      var renderW, renderH, offsetX, offsetY;
-      if (imgAspect > elAspect) {
-        renderW = dispW;
-        renderH = dispW / imgAspect;
-        offsetX = 0;
-        offsetY = (dispH - renderH) / 2;
-      } else {
-        renderH = dispH;
-        renderW = dispH * imgAspect;
-        offsetX = (dispW - renderW) / 2;
-        offsetY = 0;
-      }
-      var sx = renderW / nw;
-      var sy = renderH / nh;
-      var bw = (Number(det.width) || 0) * nw * sx;
-      var bh = (Number(det.height) || 0) * nh * sy;
-      var bx = (Number(det.x_center) || 0) * nw * sx - bw / 2 + offsetX;
-      var by = (Number(det.y_center) || 0) * nh * sy - bh / 2 + offsetY;
+      var sx = rect.width / rect.nw;
+      var sy = rect.height / rect.nh;
+      var bw = (Number(det.width) || 0) * rect.nw * sx;
+      var bh = (Number(det.height) || 0) * rect.nh * sy;
+      var bx = (Number(det.x_center) || 0) * rect.nw * sx - bw / 2 + rect.left;
+      var by = (Number(det.y_center) || 0) * rect.nh * sy - bh / 2 + rect.top;
       return {
         left: bx + 'px',
         top: by + 'px',
@@ -3375,6 +3518,32 @@ var App = {
       });
       updateScatterChart(false);
     };
+    var getScatterAspectGrid = function getScatterAspectGrid(plotW, plotH) {
+      var dom = document.getElementById('scatter-chart');
+      var chartW = (dom === null || dom === void 0 ? void 0 : dom.clientWidth) || 1;
+      var chartH = (dom === null || dom === void 0 ? void 0 : dom.clientHeight) || 1;
+      var margin = {
+        top: 40,
+        bottom: 48,
+        left: 58,
+        right: 40
+      };
+      var availableW = Math.max(1, chartW - margin.left - margin.right);
+      var availableH = Math.max(1, chartH - margin.top - margin.bottom);
+      var aspect = (Number(plotW) || 1) / (Number(plotH) || 1);
+      var gridW = availableW;
+      var gridH = gridW / aspect;
+      if (gridH > availableH) {
+        gridH = availableH;
+        gridW = gridH * aspect;
+      }
+      return {
+        top: margin.top,
+        left: Math.round((chartW - gridW) / 2),
+        width: Math.round(gridW),
+        height: Math.round(gridH)
+      };
+    };
     var updateScatterChart = function updateScatterChart() {
       var highlightOnly = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : false;
       var hideMarkLine = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : false;
@@ -3455,6 +3624,8 @@ var App = {
           data: markLineData
         };
       }
+      var axisMaxX = useReal ? Number(plotW.toFixed(4)) : plotW;
+      var axisMaxY = useReal ? Number(plotH.toFixed(4)) : plotH;
       scatterChart.setOption({
         tooltip: {
           trigger: 'item',
@@ -3468,16 +3639,27 @@ var App = {
             fontSize: 11
           }
         },
-        grid: {
-          top: 36,
-          bottom: 36,
-          left: 50,
-          right: 35
-        },
+        grid: getScatterAspectGrid(plotW, plotH),
+        dataZoom: [{
+          type: 'inside',
+          xAxisIndex: 0,
+          filterMode: 'none',
+          zoomOnMouseWheel: true,
+          moveOnMouseMove: true,
+          moveOnMouseWheel: false
+        }, {
+          type: 'inside',
+          yAxisIndex: 0,
+          filterMode: 'none',
+          zoomOnMouseWheel: true,
+          moveOnMouseMove: true,
+          moveOnMouseWheel: false
+        }],
         xAxis: {
           type: 'value',
           name: 'X',
-          max: useReal ? Number(plotW.toFixed(4)) : plotW,
+          min: 0,
+          max: axisMaxX,
           nameTextStyle: {
             fontSize: 11
           }
@@ -3485,7 +3667,8 @@ var App = {
         yAxis: {
           type: 'value',
           name: 'Y',
-          max: useReal ? Number(plotH.toFixed(4)) : plotH,
+          min: 0,
+          max: axisMaxY,
           nameTextStyle: {
             fontSize: 11
           }
@@ -3678,7 +3861,10 @@ var App = {
             if (previewResizeObserver) previewResizeObserver.disconnect();
             previewResizeObserver = new ResizeObserver(function () {
               bumpPreviewLayout();
-              if (scatterChart) scatterChart.resize();
+              if (scatterChart) {
+                scatterChart.resize();
+                updateScatterChart(false);
+              }
             });
             previewResizeObserver.observe(previewImgWrapper.value);
           }
@@ -3720,6 +3906,7 @@ var App = {
     });
     watch(currentImage, function () {
       highlightedDetId.value = null;
+      resetPreviewImageView();
       if (currentImage.value) {
         var _currentImage$value$s, _currentImage$value$s2, _currentImage$value$s3;
         analysisRealWidth.value = ((_currentImage$value$s = currentImage.value.settings) === null || _currentImage$value$s === void 0 ? void 0 : _currentImage$value$s.real_width) || 0;
@@ -4369,29 +4556,31 @@ var App = {
         pCanvas.remove(pPolygon);
         pPolygon = null;
       }
-      var imgRect = img.getBoundingRect();
+      var imgTopLeft = img.getPointByOrigin('left', 'top');
+      var imgScaledWidth = img.getScaledWidth();
+      var imgScaledHeight = img.getScaledHeight();
 
       // Create default rectangle points (e.g., 20% margin from edges)
-      var marginX = imgRect.width * 0.2;
-      var marginY = imgRect.height * 0.2;
+      var marginX = imgScaledWidth * 0.2;
+      var marginY = imgScaledHeight * 0.2;
       var defaultPoints = [{
-        x: imgRect.left + marginX,
-        y: imgRect.top + marginY
+        x: imgTopLeft.x + marginX,
+        y: imgTopLeft.y + marginY
       },
       // Top-Left
       {
-        x: imgRect.left + imgRect.width - marginX,
-        y: imgRect.top + marginY
+        x: imgTopLeft.x + imgScaledWidth - marginX,
+        y: imgTopLeft.y + marginY
       },
       // Top-Right
       {
-        x: imgRect.left + imgRect.width - marginX,
-        y: imgRect.top + imgRect.height - marginY
+        x: imgTopLeft.x + imgScaledWidth - marginX,
+        y: imgTopLeft.y + imgScaledHeight - marginY
       },
       // Bottom-Right
       {
-        x: imgRect.left + marginX,
-        y: imgRect.top + imgRect.height - marginY
+        x: imgTopLeft.x + marginX,
+        y: imgTopLeft.y + imgScaledHeight - marginY
       } // Bottom-Left
       ];
       defaultPoints.forEach(function (pt, index) {
@@ -4437,6 +4626,7 @@ var App = {
       pCanvas.on('object:moving', function (e) {
         if (e.target && e.target.type === 'circle') {
           updateLinesAndPolygon();
+          savePerspectivePoints(img);
         }
       });
       pCanvas.on('object:modified', function (e) {
@@ -4471,12 +4661,13 @@ var App = {
     };
     var savePerspectivePoints = function savePerspectivePoints(img, scale) {
       if (pPoints.length !== 4 || !currentImageSettings.value) return;
-      var imgRect = img.getBoundingRect();
+      var imgTopLeft = img.getPointByOrigin('left', 'top');
+      var scaleX = img.width / img.getScaledWidth();
+      var scaleY = img.height / img.getScaledHeight();
       var truePoints = pPoints.map(function (p) {
-        var relX = p.left - imgRect.left;
-        var relY = p.top - imgRect.top;
-        var scaleX = img.width / imgRect.width;
-        var scaleY = img.height / imgRect.height;
+        var center = p.getCenterPoint();
+        var relX = center.x - imgTopLeft.x;
+        var relY = center.y - imgTopLeft.y;
         var trueX = relX * scaleX;
         var trueY = relY * scaleY;
         return [Math.max(0, Math.min(trueX, img.width)), Math.max(0, Math.min(trueY, img.height))];
@@ -4490,13 +4681,13 @@ var App = {
         pCanvas.remove(pPolygon);
         pPolygon = null;
       }
-      var imgRect = img.getBoundingRect();
-      var scaleX = imgRect.width / img.width;
-      var scaleY = imgRect.height / img.height;
+      var imgTopLeft = img.getPointByOrigin('left', 'top');
+      var scaleX = img.getScaledWidth() / img.width;
+      var scaleY = img.getScaledHeight() / img.height;
       var canvasPoints = truePoints.map(function (tp) {
         return {
-          x: imgRect.left + tp[0] * scaleX,
-          y: imgRect.top + tp[1] * scaleY
+          x: imgTopLeft.x + tp[0] * scaleX,
+          y: imgTopLeft.y + tp[1] * scaleY
         };
       });
       canvasPoints.forEach(function (cp, i) {
@@ -4537,7 +4728,10 @@ var App = {
       createPolygon();
       img.sendToBack();
       pCanvas.on('object:moving', function (e) {
-        if (e.target && e.target.type === 'circle') updateLinesAndPolygon();
+        if (e.target && e.target.type === 'circle') {
+          updateLinesAndPolygon();
+          savePerspectivePoints(img);
+        }
       });
       pCanvas.on('object:modified', function (e) {
         if (e.target && e.target.type === 'circle') savePerspectivePoints(img, scale);
@@ -5936,6 +6130,13 @@ var App = {
       previewImgWrapper: previewImgWrapper,
       previewImageContainer: previewImageContainer,
       detTableRef: detTableRef,
+      previewImageViewportStyle: previewImageViewportStyle,
+      previewBaselineStyle: previewBaselineStyle,
+      resetPreviewImageView: resetPreviewImageView,
+      onPreviewWheel: onPreviewWheel,
+      onPreviewMouseDown: onPreviewMouseDown,
+      onPreviewMouseMove: onPreviewMouseMove,
+      onPreviewMouseUp: onPreviewMouseUp,
       analysisOrientation: analysisOrientation,
       analysisBaseline: analysisBaseline,
       analysisBaselineMax: analysisBaselineMax,
@@ -5962,6 +6163,7 @@ var App = {
       openStitching: openStitching,
       closeStitchDialog: closeStitchDialog,
       submitManualStitch: submitManualStitch,
+      fitStitchCanvasToObjects: fitStitchCanvasToObjects,
       updateStitchImageOpacity: updateStitchImageOpacity,
       updateStitchImageAngle: updateStitchImageAngle,
       rotateStitchImage: rotateStitchImage,
